@@ -22,7 +22,8 @@ type mailMessage struct {
 
 	// Internal mailbox
 	To         interface{} `json:"to"`          // string or []string
-	ReceivedAt string      `json:"received_at"` // internal
+	ReceivedAt string      `json:"received_at"` // inbox
+	SentAt     string      `json:"sent_at"`     // sent/
 	Type       string      `json:"type"`
 
 	// IMAP
@@ -101,6 +102,9 @@ func buildMailboxEntries(agentDir string) []MarkdownEntry {
 	inbox := filepath.Join(agentDir, "mailbox", "inbox")
 	mails = append(mails, scanInternalMailbox(inbox, "inbox")...)
 
+	sent := filepath.Join(agentDir, "mailbox", "sent")
+	mails = append(mails, scanInternalMailbox(sent, "sent")...)
+
 	// Sort by time descending (newest first)
 	sort.Slice(mails, func(i, j int) bool {
 		return mails[i].Time.After(mails[j].Time)
@@ -120,7 +124,7 @@ func buildMailboxEntries(agentDir string) []MarkdownEntry {
 	var result []MarkdownEntry
 	for _, group := range groupOrder {
 		for _, m := range groups[group] {
-			// Build label: "MM-DD From: Subject 📎"
+			// Build label: "MM-DD <subject-or-fallback> 📎"
 			dateStr := ""
 			if !m.Time.IsZero() {
 				dateStr = m.Time.Format("01-02") + " "
@@ -129,20 +133,26 @@ func buildMailboxEntries(agentDir string) []MarkdownEntry {
 			if len(m.Attachments) > 0 {
 				attIcon = " 📎"
 			}
-			label := dateStr + m.From
-			if m.Subject != "" {
-				label = dateStr + m.Subject
+			subject := strings.TrimSpace(m.Subject)
+			// Treat bare reply prefixes as "no subject" so 5 successive
+			// replies to a naked thread don't all collapse to "Re: ".
+			if isDegenerateSubject(subject) {
+				subject = ""
 			}
-			maxLen := 33 - len(attIcon)
-			if len(label) > maxLen {
-				label = label[:maxLen-3] + "..."
+			displaySubject := subject
+			if displaySubject == "" {
+				displaySubject = bodyPreview(m.Body)
 			}
-			label += attIcon
+			labelTail := displaySubject
+			if labelTail == "" {
+				labelTail = m.From
+			}
+			label := truncate(dateStr+labelTail, 33-runeLen(attIcon)) + attIcon
 
 			// Build right-panel content
 			var md strings.Builder
-			if m.Subject != "" {
-				md.WriteString("# " + m.Subject + "\n\n")
+			if subject != "" {
+				md.WriteString("# " + subject + "\n\n")
 			}
 			md.WriteString(fmt.Sprintf("**From:** %s  \n", m.From))
 			if m.To != "" {
@@ -218,7 +228,11 @@ func scanInternalMailbox(dir, source string) []parsedMail {
 			continue
 		}
 
-		t, _ := time.Parse(time.RFC3339, msg.ReceivedAt)
+		stamp := msg.ReceivedAt
+		if stamp == "" {
+			stamp = msg.SentAt
+		}
+		t, _ := time.Parse(time.RFC3339, stamp)
 
 		to := ""
 		switch v := msg.To.(type) {
@@ -319,3 +333,37 @@ func formatSize(bytes int) string {
 	}
 	return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
 }
+
+// isDegenerateSubject reports whether a subject is just a reply/forward
+// prefix with no real content (e.g. "Re:", "Re: ", "RE:", "Fwd:"). A naked
+// thread (original subject empty) propagates "Re: " on every reply, which
+// makes inbox rows indistinguishable.
+func isDegenerateSubject(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return true
+	}
+	low := strings.ToLower(t)
+	low = strings.TrimSuffix(low, ":")
+	low = strings.TrimSpace(low)
+	switch low {
+	case "re", "fwd", "fw":
+		return true
+	}
+	return false
+}
+
+// bodyPreview returns the first non-empty line of body, collapsed to a
+// single line for use as a fallback inbox label.
+func bodyPreview(body string) string {
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(raw)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// runeLen counts runes in s (mirrors len() but on glyphs, not bytes).
+func runeLen(s string) int { return len([]rune(s)) }
