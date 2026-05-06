@@ -1,7 +1,7 @@
 ---
 name: lingtai-issue-report
 description: Protocol for reporting bugs, stale info, missing capabilities, or design issues you spot in any LingTai skill, capability, preset, or system behavior. You assemble a structured report, ask the human for permission, then either file it directly via the `gh` CLI (if `gh auth` is present and the human consents) or hand them a formatted title + body to paste into the issue tracker.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Reporting LingTai Issues
@@ -156,3 +156,22 @@ You see far more than a human does inside the system. Use that:
 This skill itself can have bugs. If the report template here is missing a section that you find yourself wanting, or if the GitHub URLs above 404 (the org may rename, repos may move), include a note in your report saying "the issue-report skill says X but Y is what I actually found" — and the maintainers will update this skill.
 
 The canonical org is **`Lingtai-AI`** on GitHub. If `https://github.com/Lingtai-AI` itself 404s one day, the project has likely moved; ask the human where to file instead.
+
+## Proactive Surfacing — Don't Wait To Be Asked
+
+When you identify an issue that meets the "When To Invoke" criteria, **surface it immediately** — don't wait for the human to ask you to file a report. The correct sequence is:
+
+1. You diagnose the problem (as part of your normal work)
+2. You apply a workaround or fix (if possible)
+3. **You proactively tell the human:** "I ran into [brief summary]. Want me to file a GitHub issue about it?"
+4. If they say yes → follow the Filing Path below
+5. If they say no → drop it
+
+The human should never have to guess that you found a bug. **Your job is not just to fix — it's to surface.**
+
+Signs you should proactively offer:
+- You spent more than 2 turns diagnosing an unexpected error
+- The workaround you used is not documented anywhere
+- The bug would affect other agents or users, not just you
+- You discovered the fix requires a restart, manual file edit, or other non-obvious step
+- The issue contradicts what the documentation claims
