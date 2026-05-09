@@ -664,6 +664,8 @@ func (m FirstRunModel) Update(msg tea.Msg) (FirstRunModel, tea.Cmd) {
 		// The user advances explicitly with Enter when they're ready —
 		// editing is no longer an implicit advance.
 		toSave := stampAutoEnvVar(msg.Preset, m.existingKeys)
+		// Sync capability api_key_env to match the LLM's stamped env var.
+		preset.SyncCapabilityAPIKeyEnv(toSave.Manifest)
 		// (No "one-codex" enforcement — multiple codex presets are
 		// allowed by design, each pinning a different model. The
 		// credential is shared via codex-auth.json.)

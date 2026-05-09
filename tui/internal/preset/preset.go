@@ -1240,12 +1240,12 @@ func GenerateInitJSON(p Preset, agentName, dirName, lingtaiDir, globalDir string
 	return GenerateInitJSONWithOpts(p, agentName, dirName, lingtaiDir, globalDir, opts)
 }
 
-// syncCapabilityAPIKeyEnv propagates the LLM's api_key_env to any
+// SyncCapabilityAPIKeyEnv propagates the LLM's api_key_env to any
 // capability whose provider matches the LLM provider. This ensures
 // capabilities like web_search and vision use the same resolved env
 // var slot (e.g. "ZHIPU_CN_1_API_KEY") rather than a stale preset
 // placeholder (e.g. "ZHIPU_API_KEY").
-func syncCapabilityAPIKeyEnv(manifest map[string]interface{}) {
+func SyncCapabilityAPIKeyEnv(manifest map[string]interface{}) {
 	llm, _ := manifest["llm"].(map[string]interface{})
 	if llm == nil {
 		return
@@ -1301,7 +1301,7 @@ func GenerateInitJSONWithOpts(p Preset, agentName, dirName, lingtaiDir, globalDi
 	// the LLM's slot to "ZHIPU_CN_1_API_KEY" etc. Without this,
 	// web_search/vision capabilities still reference the non-existent
 	// placeholder and fail at boot.
-	syncCapabilityAPIKeyEnv(manifest)
+	SyncCapabilityAPIKeyEnv(manifest)
 	manifest["admin"] = map[string]interface{}{
 		"karma":   opts.Karma,
 		"nirvana": opts.Nirvana,

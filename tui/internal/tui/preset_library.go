@@ -139,6 +139,9 @@ func (m PresetLibraryModel) Update(msg tea.Msg) (PresetLibraryModel, tea.Cmd) {
 			if globalDir, err := config.GlobalDir(); err == nil {
 				if cfg, err := config.LoadConfig(globalDir); err == nil {
 					toSave = stampAutoEnvVar(toSave, cfg.Keys)
+					// Sync capability api_key_env to match the LLM's
+					// stamped env var (e.g. ZHIPU_INTL_2_API_KEY).
+					preset.SyncCapabilityAPIKeyEnv(toSave.Manifest)
 					// Persist a new key value if the user typed one in
 					// the editor. Look up the env-var name *after*
 					// stampAutoEnvVar so newly-assigned slots get the
