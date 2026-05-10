@@ -53,10 +53,8 @@ const (
 	feCapFile
 	feCapBash
 	feCapWebSearch
-	feCapCodex
 	feCapAvatar
 	feCapDaemon
-	feCapLibrary
 	feCapVision
 	feStreaming
 	feKarma
@@ -67,28 +65,27 @@ const (
 // capFieldNames maps each capability field to its underlying capability
 // key. Order matches editorCapabilities and editorFieldOrder so the
 // vision row stays last visually and feCapVision is the only model-
-// conditional row.
+// conditional row. codex and library are mandatory — always present,
+// not shown as toggleable options.
 var capFieldNames = map[editorField]string{
 	feCapFile:      "file",
 	feCapBash:      "bash",
 	feCapWebSearch: "web_search",
-	feCapCodex:     "codex",
 	feCapAvatar:    "avatar",
 	feCapDaemon:    "daemon",
-	feCapLibrary:   "library",
 	feCapVision:    "vision",
 }
 
 // editorFieldOrder is the rendering order of fields. The cursor walks
 // this slice; section headers render between transitions. Capability
-// rows split into core (file/bash/codex/avatar/daemon/library) and
-// extras (web_search/vision) — email and psyche are intrinsics, always
-// present, so they don't appear here.
+// rows split into core (file/bash/avatar/daemon) and extras
+// (web_search/vision) — email, psyche, codex, and library are always
+// present (intrinsics or mandatory), so they don't appear here.
 var editorFieldOrder = []editorField{
 	feName, feSummary, feTier, feGains, feLoses,
 	feProvider, feModel, feAPICompat, feBaseURL, feAPIKey,
-	feCapFile, feCapBash, feCapCodex,
-	feCapAvatar, feCapDaemon, feCapLibrary,
+	feCapFile, feCapBash,
+	feCapAvatar, feCapDaemon,
 	feCapWebSearch, feCapVision,
 	feSave,
 }
@@ -175,12 +172,12 @@ var modelHasVision = map[string]bool{
 	"gpt-5.2":       true,
 }
 
-// coreCapabilities are the always-on building blocks every agent
-// shares — filesystem, shell, mailbox, knowledge, parallelism. No
-// provider knobs, not model-conditional.
+// coreCapabilities are the toggleable building blocks shown as checkboxes
+// in the editor. codex and library are mandatory (always injected at save),
+// so they do not appear here. No provider knobs, not model-conditional.
 var coreCapabilities = []string{
-	"file", "bash", "codex",
-	"avatar", "daemon", "library",
+	"file", "bash",
+	"avatar", "daemon",
 }
 
 // extraCapabilities are provider/model-conditional. web_search picks
@@ -580,8 +577,8 @@ func (m *PresetEditorModel) openInline() (PresetEditorModel, tea.Cmd) {
 	case feTier:
 		// Tier is an enum — Enter cycles like ←/→. No picker overlay.
 		m.cycleFocused(+1)
-	case feCapFile, feCapBash, feCapCodex,
-		feCapAvatar, feCapDaemon, feCapLibrary, feCapWebSearch, feCapVision:
+	case feCapFile, feCapBash,
+		feCapAvatar, feCapDaemon, feCapWebSearch, feCapVision:
 		// Capability rows: Enter toggles, same as Space. Disabled rows
 		// (e.g. vision on text-only models) are gated inside toggleFocused.
 		m.toggleFocused()
@@ -939,6 +936,18 @@ func (m PresetEditorModel) commit() (PresetEditorModel, tea.Cmd) {
 	// differs from the template's name), respect that name. Otherwise
 	// gap-fill the next "<template>-N" slot.
 	committed := clonePresetForEditor(m.working)
+	// Ensure codex and library are always present — they are mandatory
+	// capabilities not exposed as toggles in the editor UI.
+	if caps, ok := committed.Manifest["capabilities"].(map[string]interface{}); ok {
+		if _, has := caps["codex"]; !has {
+			caps["codex"] = map[string]interface{}{}
+		}
+		if _, has := caps["library"]; !has {
+			caps["library"] = map[string]interface{}{
+				"paths": []interface{}{"../.library_shared", "~/.lingtai-tui/utilities"},
+			}
+		}
+	}
 	if m.isBuiltin && (m.hasSemanticEdits() || m.apiKeySet) {
 		if committed.Name == m.original.Name {
 			existing, _ := preset.List()
