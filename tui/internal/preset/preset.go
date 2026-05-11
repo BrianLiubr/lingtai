@@ -1221,7 +1221,7 @@ func DefaultAgentOpts() AgentOpts {
 		Language:     "en",
 		Stamina:      36000,
 		ContextLimit: 200000,
-		SoulDelay:    7200,
+		SoulDelay:    99999,
 		MoltPressure: 0.8,
 		MaxRpm:       60,
 		Karma:        true,

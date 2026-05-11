@@ -1598,7 +1598,7 @@ func (m FirstRunModel) Update(msg tea.Msg) (FirstRunModel, tea.Cmd) {
 					}
 					soulDelay, _ := strconv.ParseFloat(m.soulDelayInput.Value(), 64)
 					if soulDelay <= 0 {
-						soulDelay = 120
+						soulDelay = 99999
 					}
 					moltPress, _ := strconv.ParseFloat(m.moltPressInput.Value(), 64)
 					if moltPress <= 0 || moltPress > 1 {
@@ -1655,7 +1655,7 @@ func (m FirstRunModel) Update(msg tea.Msg) (FirstRunModel, tea.Cmd) {
 				}
 				soulDelay, err := strconv.ParseFloat(m.soulDelayInput.Value(), 64)
 				if err != nil || soulDelay <= 0 {
-					soulDelay = 120
+					soulDelay = 99999
 				}
 				moltPress, err := strconv.ParseFloat(m.moltPressInput.Value(), 64)
 				if err != nil || moltPress <= 0 || moltPress > 1 {
@@ -3402,14 +3402,8 @@ func (m *FirstRunModel) enterAgentNameDir(p preset.Preset) {
 
 	// Numeric defaults — overridden by saved init.json values in setup mode below.
 	m.staminaInput.SetValue("36000")
-	// Default context window: 200K for most providers; DeepSeek V4 ships with
-	// a 1M window out of the box, so let the agent use it.
-	ctxDefault := "200000"
-	if m.getPresetProvider(p) == "deepseek" {
-		ctxDefault = "1000000"
-	}
-	m.ctxLimitInput.SetValue(ctxDefault)
-	m.soulDelayInput.SetValue("120")
+	m.ctxLimitInput.SetValue("200000")
+	m.soulDelayInput.SetValue("99999")
 	m.moltPressInput.SetValue("0.8")
 	m.maxRpmInput.SetValue("60")
 	m.staminaInput.Blur()
