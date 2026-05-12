@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestMarkdownViewer_EmptyEntries(t *testing.T) {
@@ -189,6 +191,84 @@ func TestMarkdownViewer_TreeArrowIndicators(t *testing.T) {
 	}
 	if !strings.Contains(left, "▶") {
 		t.Errorf("expected ▶ indicator for collapsed group:\n%s", left)
+	}
+}
+
+func TestMarkdownViewer_CreateDeleteHintsRespectFlags(t *testing.T) {
+	entries := []MarkdownEntry{{Label: "a", Group: "G", Content: "x"}}
+	m := NewMarkdownViewer(entries, "T")
+	m.width = 120
+	m.height = 24
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+
+	// Without flags, the footer should not mention ctrl+n / ctrl+d.
+	view := m.View()
+	if strings.Contains(view, "ctrl+n") || strings.Contains(view, "ctrl+d") {
+		t.Errorf("flags off but found ctrl+n/ctrl+d in footer:\n%s", view)
+	}
+
+	m.EnableCreate = true
+	m.EnableDelete = true
+	view = m.View()
+	if !strings.Contains(view, "ctrl+n") {
+		t.Errorf("expected ctrl+n hint when EnableCreate=true:\n%s", view)
+	}
+	if !strings.Contains(view, "ctrl+d") {
+		t.Errorf("expected ctrl+d hint when EnableDelete=true:\n%s", view)
+	}
+}
+
+func TestMarkdownViewer_CreateMsgEmittedOnCtrlN(t *testing.T) {
+	entries := []MarkdownEntry{{Label: "a", Group: "G", Content: "x"}}
+	m := NewMarkdownViewer(entries, "T")
+	m.EnableCreate = true
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("expected cmd from ctrl+n")
+	}
+	msg := cmd()
+	if _, ok := msg.(MarkdownViewerCreateMsg); !ok {
+		t.Fatalf("expected MarkdownViewerCreateMsg, got %T", msg)
+	}
+}
+
+func TestMarkdownViewer_DeleteMsgEmittedOnCtrlD(t *testing.T) {
+	entries := []MarkdownEntry{{Label: "a", Group: "G", Content: "x", Path: "/tmp/x"}}
+	m := NewMarkdownViewer(entries, "T")
+	m.EnableDelete = true
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("expected cmd from ctrl+d")
+	}
+	msg := cmd()
+	dm, ok := msg.(MarkdownViewerDeleteMsg)
+	if !ok {
+		t.Fatalf("expected MarkdownViewerDeleteMsg, got %T", msg)
+	}
+	if dm.Index != 0 {
+		t.Errorf("Index = %d, want 0", dm.Index)
+	}
+	if dm.Entry.Label != "a" {
+		t.Errorf("Entry.Label = %q, want a", dm.Entry.Label)
+	}
+}
+
+func TestMarkdownViewer_SetEntriesRefreshes(t *testing.T) {
+	entries := []MarkdownEntry{{Label: "a", Group: "G", Content: "x"}}
+	m := NewMarkdownViewer(entries, "T")
+	newEntries := []MarkdownEntry{
+		{Label: "b", Group: "H", Content: "y"},
+		{Label: "c", Group: "H", Content: "z"},
+	}
+	m.SetEntries(newEntries)
+	if len(m.entries) != 2 {
+		t.Fatalf("entries len = %d, want 2", len(m.entries))
+	}
+	if !m.expanded["H"] {
+		t.Error("first group of new entries should be expanded by default")
+	}
+	if idx := m.currentEntryIndex(); idx != 0 {
+		t.Errorf("currentEntryIndex after SetEntries = %d, want 0", idx)
 	}
 }
 

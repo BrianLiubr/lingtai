@@ -36,6 +36,19 @@ type MarkdownViewerSelectMsg struct {
 	Entry MarkdownEntry
 }
 
+// MarkdownViewerCreateMsg is sent when the user presses ctrl+n with creation
+// enabled. The wrapper is expected to open its own inline prompt UI to gather
+// the new entry's metadata and write it to disk.
+type MarkdownViewerCreateMsg struct{}
+
+// MarkdownViewerDeleteMsg is sent when the user presses ctrl+d on an entry
+// with deletion enabled. The wrapper decides whether the targeted entry is
+// actually deletable (e.g. legacy/intrinsic items may be read-only).
+type MarkdownViewerDeleteMsg struct {
+	Index int
+	Entry MarkdownEntry
+}
+
 // MarkdownViewerModel is a two-panel view with independent scrolling:
 // left panel (entry list) and right panel (rendered markdown content).
 type MarkdownViewerModel struct {
@@ -56,6 +69,12 @@ type MarkdownViewerModel struct {
 	// hint (e.g., "ctrl+t select agent"). Wrappers set this to advertise keys
 	// they handle at a higher level.
 	FooterHint string
+
+	// EnableCreate / EnableDelete toggle the ctrl+n / ctrl+d key bindings and
+	// their footer hints. Wrappers enable them only where mutation is allowed
+	// (e.g. /knowledge for the current agent; /skills only outside drill-in).
+	EnableCreate bool
+	EnableDelete bool
 
 	// status is a transient message (e.g. last export path) shown in the footer
 	// in place of the standard hint line. Cleared on the next keypress.
@@ -152,6 +171,22 @@ func (m MarkdownViewerModel) Update(msg tea.Msg) (MarkdownViewerModel, tea.Cmd) 
 		if key == "ctrl+e" {
 			m.exportCurrent()
 			return m, nil
+		}
+		// ctrl+n / ctrl+d emit messages the wrapper handles; mdviewer itself
+		// is stateless about create/delete so different wrappers can wire
+		// their own prompt UIs.
+		if key == "ctrl+n" && m.EnableCreate {
+			return m, func() tea.Msg { return MarkdownViewerCreateMsg{} }
+		}
+		if key == "ctrl+d" && m.EnableDelete {
+			idx := m.currentEntryIndex()
+			if idx < 0 {
+				return m, nil
+			}
+			entry := m.entries[idx]
+			return m, func() tea.Msg {
+				return MarkdownViewerDeleteMsg{Index: idx, Entry: entry}
+			}
 		}
 		// Any other keypress dismisses a stale status banner.
 		if m.status != "" {
@@ -553,6 +588,54 @@ func (m *MarkdownViewerModel) setStatus(msg string, isErr bool) {
 	m.statusErr = isErr
 }
 
+// SetStatus exposes the transient footer-status banner to wrappers (e.g. after
+// a create/delete mutation). Cleared on the next keypress.
+func (m *MarkdownViewerModel) SetStatus(msg string, isErr bool) {
+	m.setStatus(msg, isErr)
+}
+
+// SetEntries replaces the viewer's entries in place (preserving panel
+// dimensions) and recomputes the group order and cursor. Used by wrappers
+// after a create/delete mutation refreshes the underlying source.
+func (m *MarkdownViewerModel) SetEntries(entries []MarkdownEntry) {
+	prevExpanded := m.expanded
+	if prevExpanded == nil {
+		prevExpanded = make(map[string]bool)
+	}
+	expanded := make(map[string]bool)
+	var order []string
+	seen := make(map[string]bool)
+	for _, e := range entries {
+		if !seen[e.Group] {
+			seen[e.Group] = true
+			order = append(order, e.Group)
+		}
+	}
+	for _, g := range order {
+		if v, ok := prevExpanded[g]; ok {
+			expanded[g] = v
+		}
+	}
+	if len(order) > 0 {
+		if _, ok := expanded[order[0]]; !ok {
+			expanded[order[0]] = true
+		}
+	}
+	m.entries = entries
+	m.expanded = expanded
+	m.groupOrder = order
+	m.cursor = 0
+	nodes := m.visibleNodes()
+	for i, n := range nodes {
+		if !n.isGroup {
+			m.cursor = i
+			break
+		}
+	}
+	m.syncLeft()
+	m.syncRight()
+}
+
 // exportTargetDir returns the user's Downloads directory, falling back to the
 // home directory if Downloads is not writable.
 func exportTargetDir() (string, error) {
@@ -625,11 +708,18 @@ func (m MarkdownViewerModel) View() string {
 	}
 	focusHint := "tab switch"
 	exportHint := " " + RuneBullet + " " + i18n.T("mdviewer.export_hint")
+	mutateHint := ""
+	if m.EnableCreate {
+		mutateHint += " " + RuneBullet + " " + i18n.T("mdviewer.create_hint")
+	}
+	if m.EnableDelete {
+		mutateHint += " " + RuneBullet + " " + i18n.T("mdviewer.delete_hint")
+	}
 	extraHint := ""
 	if m.FooterHint != "" {
 		extraHint = " " + RuneBullet + " " + m.FooterHint
 	}
-	hintLine := StyleFaint.Render("  ↑↓ " + i18n.T("welcome.select_lang") + "  [Esc] " + i18n.T("firstrun.back") + " " + RuneBullet + " " + focusHint + scrollHint + exportHint + extraHint)
+	hintLine := StyleFaint.Render("  ↑↓ " + i18n.T("welcome.select_lang") + "  [Esc] " + i18n.T("firstrun.back") + " " + RuneBullet + " " + focusHint + scrollHint + exportHint + mutateHint + extraHint)
 	if m.status != "" {
 		statusStyle := lipgloss.NewStyle().Foreground(ColorAccent)
 		if m.statusErr {

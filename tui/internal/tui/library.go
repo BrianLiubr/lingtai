@@ -572,6 +572,9 @@ type LibraryModel struct {
 	// pops back to the catalog (clears this pointer).
 	drillIn *MarkdownViewerModel
 
+	// Inline create / delete prompt; active only on the catalog view.
+	prompt *entryPrompt
+
 	// Agent picker overlay state
 	pickerOpen bool
 	pickerIdx  int
@@ -599,6 +602,8 @@ func NewLibraryModel(baseDir, selectedDir, lang string) LibraryModel {
 	entries := buildAgentLibraryCatalog(selectedDir, lang)
 	inner := NewMarkdownViewer(entries, libraryTitleFor(selectedDir))
 	inner.FooterHint = i18n.T("hints.skills_catalog")
+	inner.EnableCreate = true
+	inner.EnableDelete = true
 	return LibraryModel{
 		baseDir:     baseDir,
 		selectedDir: selectedDir,
@@ -684,6 +689,38 @@ func (m LibraryModel) Update(msg tea.Msg) (LibraryModel, tea.Cmd) {
 		}
 		return m, cmd
 
+	case MarkdownViewerCreateMsg:
+		if m.drillIn != nil {
+			return m, nil
+		}
+		p := newCreatePrompt(i18n.T("mdviewer.create_skill_title"), []entryPromptField{
+			{Key: "name", Label: i18n.T("mdviewer.field_name"), Placeholder: i18n.T("mdviewer.field_name_ph"), Required: true, CharLimit: 80},
+			{Key: "description", Label: i18n.T("mdviewer.field_description"), Placeholder: i18n.T("mdviewer.field_description_ph"), Required: true, CharLimit: 300},
+			{Key: "version", Label: i18n.T("mdviewer.field_version"), Placeholder: "1.0.0", Required: false, CharLimit: 32},
+		})
+		p.SetWidth(m.width)
+		m.prompt = &p
+		return m, nil
+
+	case MarkdownViewerDeleteMsg:
+		if m.drillIn != nil {
+			return m, nil
+		}
+		// Only entries in the "custom" group are mutable. intrinsic /
+		// capabilities / addons / shared / utilities live elsewhere on disk
+		// and are typically read-only from the agent's perspective.
+		if msg.Entry.Group != "custom" {
+			m.inner.SetStatus(i18n.T("mdviewer.delete_skill_readonly"), true)
+			return m, nil
+		}
+		if msg.Entry.Path == "" {
+			return m, nil
+		}
+		p := newDeleteConfirmPrompt(i18n.T("mdviewer.delete_skill_title"), msg.Entry.Label)
+		p.values["path"] = msg.Entry.Path
+		m.prompt = &p
+		return m, nil
+
 	case MarkdownViewerSelectMsg:
 		// Catalog selection: drill in to the skill's folder.
 		if m.drillIn != nil {
@@ -733,6 +770,9 @@ func (m LibraryModel) Update(msg tea.Msg) (LibraryModel, tea.Cmd) {
 		if m.pickerOpen {
 			return m.updatePicker(msg)
 		}
+		if m.prompt != nil {
+			return m.updatePrompt(msg)
+		}
 		// Drill-in active: keys go to the drill-in viewer instead of the
 		// catalog. Esc/q pops back to the catalog; Ctrl+T is ignored so
 		// the user can discover it via the footer hint (still shown on
@@ -781,6 +821,9 @@ func (m LibraryModel) Update(msg tea.Msg) (LibraryModel, tea.Cmd) {
 			m.pickerVP, cmd = m.pickerVP.Update(msg)
 			return m, cmd
 		}
+		if m.prompt != nil {
+			return m, nil
+		}
 		if m.drillIn != nil {
 			inner := *m.drillIn
 			var cmd tea.Cmd
@@ -804,6 +847,118 @@ func (m LibraryModel) Update(msg tea.Msg) (LibraryModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.inner, cmd = m.inner.Update(msg)
 	return m, cmd
+}
+
+// updatePrompt drives the inline create / delete state machine. When the
+// prompt completes, the corresponding filesystem mutation is applied and the
+// catalog is rebuilt in place.
+func (m LibraryModel) updatePrompt(msg tea.KeyPressMsg) (LibraryModel, tea.Cmd) {
+	if m.prompt == nil {
+		return m, nil
+	}
+	p, cmd := m.prompt.Update(msg)
+	m.prompt = &p
+	if p.Cancelled() {
+		m.prompt = nil
+		return m, cmd
+	}
+	if !p.Done() {
+		return m, cmd
+	}
+	values := p.Values()
+	wasCreate := p.kind == entryPromptCreate
+	m.prompt = nil
+	if wasCreate {
+		if err := m.createSkillEntry(values["name"], values["description"], values["version"]); err != nil {
+			m.inner.SetStatus(i18n.TF("mdviewer.create_failed", err.Error()), true)
+		} else {
+			m.refreshEntries()
+			m.inner.SetStatus(i18n.TF("mdviewer.create_ok", values["name"]), false)
+		}
+	} else {
+		path := values["path"]
+		target := values["target"]
+		if err := m.deleteSkillEntry(path); err != nil {
+			m.inner.SetStatus(i18n.TF("mdviewer.delete_failed", err.Error()), true)
+		} else {
+			m.refreshEntries()
+			m.inner.SetStatus(i18n.TF("mdviewer.delete_ok", target), false)
+		}
+	}
+	return m, cmd
+}
+
+// createSkillEntry writes a new SKILL.md under
+// <agent>/.library/custom/<name>/SKILL.md using the user-entered name as the
+// folder name. Errors if the folder already exists.
+func (m LibraryModel) createSkillEntry(name, description, version string) error {
+	if m.selectedDir == "" {
+		return fmt.Errorf("no agent selected")
+	}
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	version = strings.TrimSpace(version)
+	if name == "" {
+		return fmt.Errorf("name required")
+	}
+	folder := filepath.Join(m.selectedDir, ".library", "custom", name)
+	if _, err := os.Stat(folder); err == nil {
+		return fmt.Errorf("%s already exists", folder)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return err
+	}
+	body := buildSkillBody(name, description, version)
+	return os.WriteFile(filepath.Join(folder, "SKILL.md"), []byte(body), 0o644)
+}
+
+// deleteSkillEntry removes the folder that contains the given SKILL.md.
+// Requires the folder to live under <agent>/.library/custom so intrinsic /
+// shared / utilities corpora cannot be deleted from the TUI.
+func (m LibraryModel) deleteSkillEntry(path string) error {
+	if path == "" {
+		return fmt.Errorf("missing path")
+	}
+	dir := filepath.Dir(path)
+	customRoot := filepath.Join(m.selectedDir, ".library", "custom")
+	rel, err := filepath.Rel(customRoot, dir)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path %s is not a custom skill", dir)
+	}
+	return os.RemoveAll(dir)
+}
+
+func (m *LibraryModel) refreshEntries() {
+	entries := buildAgentLibraryCatalog(m.selectedDir, m.lang)
+	m.inner.SetEntries(entries)
+}
+
+// buildSkillBody composes the initial SKILL.md body with YAML frontmatter
+// matching parseSkillFile's expectations (name + description required;
+// version optional).
+func buildSkillBody(name, description, version string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("name: ")
+	b.WriteString(yamlScalar(name))
+	b.WriteString("\n")
+	b.WriteString("description: ")
+	b.WriteString(yamlScalar(description))
+	b.WriteString("\n")
+	if version != "" {
+		b.WriteString("version: ")
+		b.WriteString(yamlScalar(version))
+		b.WriteString("\n")
+	}
+	b.WriteString("---\n\n")
+	b.WriteString("# ")
+	b.WriteString(name)
+	b.WriteString("\n\n")
+	b.WriteString(description)
+	b.WriteString("\n")
+	return b.String()
 }
 
 // updatePicker mirrors PropsModel.updatePicker: up/down navigate, Enter selects,
@@ -836,6 +991,8 @@ func (m LibraryModel) updatePicker(msg tea.KeyPressMsg) (LibraryModel, tea.Cmd) 
 				entries := buildAgentLibraryCatalog(m.selectedDir, m.lang)
 				m.inner = NewMarkdownViewer(entries, libraryTitleFor(m.selectedDir))
 				m.inner.FooterHint = i18n.T("hints.props_select")
+				m.inner.EnableCreate = true
+				m.inner.EnableDelete = true
 				// Propagate size so the new inner viewer is laid out.
 				if m.width > 0 && m.height > 0 {
 					var cmd tea.Cmd
@@ -929,6 +1086,9 @@ func (m LibraryModel) View() string {
 	}
 	if m.drillIn != nil {
 		return m.drillIn.View()
+	}
+	if m.prompt != nil {
+		return overlayPrompt(m.inner.View(), m.prompt.View())
 	}
 	// Non-picker: show the inner viewer. We append a Ctrl+T hint to the footer
 	// by letting the inner viewer render normally; the hint is included in
