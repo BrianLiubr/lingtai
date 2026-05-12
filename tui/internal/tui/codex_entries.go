@@ -115,9 +115,10 @@ func buildAgentKnowledgeEntries(agentDir string) []MarkdownEntry {
 			group = e.RelDir
 		}
 		result = append(result, MarkdownEntry{
-			Label: label,
-			Group: group,
-			Path:  e.Path,
+			Label:       label,
+			Description: e.Description,
+			Group:       group,
+			Path:        e.Path,
 		})
 	}
 	return result

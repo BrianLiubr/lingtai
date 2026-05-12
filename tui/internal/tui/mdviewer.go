@@ -18,10 +18,11 @@ import (
 
 // MarkdownEntry is a single item in the markdown viewer's left panel.
 type MarkdownEntry struct {
-	Label   string // display name shown in list
-	Group   string // section header (entries with same group are grouped)
-	Path    string // absolute path to file (read on selection)
-	Content string // pre-built content (used instead of Path if non-empty)
+	Label       string // display name shown in list
+	Description string // optional subtitle (rendered faint under Label)
+	Group       string // section header (entries with same group are grouped)
+	Path        string // absolute path to file (read on selection)
+	Content     string // pre-built content (used instead of Path if non-empty)
 }
 
 // MarkdownViewerCloseMsg is sent when the user exits the viewer.
@@ -60,6 +61,13 @@ type MarkdownViewerModel struct {
 	// in place of the standard hint line. Cleared on the next keypress.
 	status    string
 	statusErr bool
+
+	// expanded tracks which group folders are open. Groups not present in the
+	// map are treated as collapsed. Groups are keyed by their Group string.
+	expanded map[string]bool
+	// groupOrder is the de-duplicated list of groups in entry-order; used to
+	// render group nodes even when none of their entries are visible.
+	groupOrder []string
 }
 
 const (
@@ -70,12 +78,38 @@ const (
 )
 
 // NewMarkdownViewer creates a viewer with the given entries and title.
+// The first group is expanded by default; all others start collapsed so the
+// sidebar fits in one screen for agents with many groups.
 func NewMarkdownViewer(entries []MarkdownEntry, title string) MarkdownViewerModel {
-	return MarkdownViewerModel{
-		entries: entries,
-		title:   title,
-		focus:   mdvFocusRight, // default focus on content
+	expanded := make(map[string]bool)
+	var order []string
+	seen := make(map[string]bool)
+	for _, e := range entries {
+		if !seen[e.Group] {
+			seen[e.Group] = true
+			order = append(order, e.Group)
+		}
 	}
+	if len(order) > 0 {
+		expanded[order[0]] = true
+	}
+	m := MarkdownViewerModel{
+		entries:    entries,
+		title:      title,
+		focus:      mdvFocusRight, // default focus on content
+		expanded:   expanded,
+		groupOrder: order,
+	}
+	// Land the cursor on the first entry (skip past the group header) so the
+	// right panel renders immediately and matches the pre-tree behavior.
+	nodes := m.visibleNodes()
+	for i, n := range nodes {
+		if !n.isGroup {
+			m.cursor = i
+			break
+		}
+	}
+	return m
 }
 
 func (m MarkdownViewerModel) Init() tea.Cmd { return nil }
@@ -128,8 +162,15 @@ func (m MarkdownViewerModel) Update(msg tea.Msg) (MarkdownViewerModel, tea.Cmd) 
 		case "esc", "q":
 			return m, func() tea.Msg { return MarkdownViewerCloseMsg{} }
 		case "enter":
-			if m.cursor < len(m.entries) {
-				idx := m.cursor
+			nodes := m.visibleNodes()
+			if m.cursor < len(nodes) {
+				n := nodes[m.cursor]
+				if n.isGroup {
+					m.toggleGroup(n.group)
+					m.syncLeft()
+					return m, nil
+				}
+				idx := n.entryIdx
 				entry := m.entries[idx]
 				return m, func() tea.Msg {
 					return MarkdownViewerSelectMsg{Index: idx, Entry: entry}
@@ -139,6 +180,43 @@ func (m MarkdownViewerModel) Update(msg tea.Msg) (MarkdownViewerModel, tea.Cmd) 
 		case "tab":
 			m.focus = 1 - m.focus // toggle
 			return m, nil
+		case "left", "h":
+			// Collapse the group containing the cursor, or, if already on a
+			// collapsed group header, jump to the previous group header.
+			nodes := m.visibleNodes()
+			if m.cursor < len(nodes) {
+				n := nodes[m.cursor]
+				if n.isGroup && m.expanded[n.group] {
+					m.expanded[n.group] = false
+					m.syncLeft()
+					return m, nil
+				}
+				if !n.isGroup {
+					// Move cursor to the group header and collapse it.
+					for i := m.cursor - 1; i >= 0; i-- {
+						if nodes[i].isGroup && nodes[i].group == n.group {
+							m.cursor = i
+							m.expanded[n.group] = false
+							m.syncLeft()
+							m.syncRight()
+							return m, nil
+						}
+					}
+				}
+			}
+			return m, nil
+		case "right", "l":
+			// Expand the group under the cursor.
+			nodes := m.visibleNodes()
+			if m.cursor < len(nodes) {
+				n := nodes[m.cursor]
+				if n.isGroup && !m.expanded[n.group] {
+					m.expanded[n.group] = true
+					m.syncLeft()
+					return m, nil
+				}
+			}
+			return m, nil
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -147,7 +225,7 @@ func (m MarkdownViewerModel) Update(msg tea.Msg) (MarkdownViewerModel, tea.Cmd) 
 			}
 			return m, nil
 		case "down", "j":
-			if m.cursor < len(m.entries)-1 {
+			if m.cursor < len(m.visibleNodes())-1 {
 				m.cursor++
 				m.syncLeft()
 				m.syncRight()
@@ -212,23 +290,75 @@ func (m *MarkdownViewerModel) syncRight() {
 	m.rightVP.SetYOffset(0) // reset scroll on selection change
 }
 
-// cursorLineInLeft returns the line number of the cursor in the rendered left panel.
+// visibleNode is one row in the tree sidebar — either a group header or an
+// expanded entry. The cursor indexes into the slice returned by
+// visibleNodes(), so collapsed groups are automatically skipped.
+type visibleNode struct {
+	isGroup  bool
+	group    string
+	entryIdx int // -1 when isGroup
+}
+
+// visibleNodes returns the ordered list of group headers and (when their
+// group is expanded) entry rows that make up the current sidebar tree.
+func (m MarkdownViewerModel) visibleNodes() []visibleNode {
+	var nodes []visibleNode
+	if len(m.entries) == 0 {
+		return nodes
+	}
+	// Group entries while preserving entry order.
+	byGroup := make(map[string][]int)
+	for i, e := range m.entries {
+		byGroup[e.Group] = append(byGroup[e.Group], i)
+	}
+	for _, g := range m.groupOrder {
+		nodes = append(nodes, visibleNode{isGroup: true, group: g, entryIdx: -1})
+		if m.expanded[g] {
+			for _, idx := range byGroup[g] {
+				nodes = append(nodes, visibleNode{isGroup: false, group: g, entryIdx: idx})
+			}
+		}
+	}
+	return nodes
+}
+
+// currentEntryIndex returns the entry index under the cursor, or -1 when the
+// cursor is on a group header.
+func (m MarkdownViewerModel) currentEntryIndex() int {
+	nodes := m.visibleNodes()
+	if m.cursor >= len(nodes) {
+		return -1
+	}
+	n := nodes[m.cursor]
+	if n.isGroup {
+		return -1
+	}
+	return n.entryIdx
+}
+
+func (m *MarkdownViewerModel) toggleGroup(group string) {
+	if m.expanded == nil {
+		m.expanded = make(map[string]bool)
+	}
+	m.expanded[group] = !m.expanded[group]
+}
+
+// cursorLineInLeft returns the line number of the cursor row in the rendered
+// left panel. Each visible node renders as exactly one line plus an optional
+// description line for non-group entries that carry a Description.
 func (m MarkdownViewerModel) cursorLineInLeft() int {
 	line := 0
-	lastGroup := ""
-	for i, e := range m.entries {
-		if e.Group != lastGroup {
-			if lastGroup != "" {
-				line++ // blank line between groups
-			}
-			line++ // group header
-			line++ // blank after header
-			lastGroup = e.Group
-		}
+	nodes := m.visibleNodes()
+	for i, n := range nodes {
 		if i == m.cursor {
 			return line
 		}
-		line++
+		line++ // the node's own row
+		if !n.isGroup {
+			if d := strings.TrimSpace(m.entries[n.entryIdx].Description); d != "" {
+				line++ // subtitle line
+			}
+		}
 	}
 	return line
 }
@@ -241,54 +371,89 @@ func (m MarkdownViewerModel) renderLeft(maxW int) string {
 
 	problemsGroup := i18n.T("skills.problems")
 
-	var lines []string
-	lastGroup := ""
+	nodes := m.visibleNodes()
+	if len(nodes) == 0 {
+		return "  " + StyleFaint.Render("(empty)")
+	}
 
-	for i, e := range m.entries {
-		if e.Group != lastGroup {
-			if lastGroup != "" {
-				lines = append(lines, "")
+	var lines []string
+	for i, n := range nodes {
+		isCursor := i == m.cursor
+		if n.isGroup {
+			arrow := "▶"
+			if m.expanded[n.group] {
+				arrow = "▼"
 			}
+			marker := "  "
 			gs := sectionStyle
-			if e.Group == problemsGroup || e.Group == "Problems" {
+			if n.group == problemsGroup || n.group == "Problems" {
 				gs = warnStyle
 			}
-			lines = append(lines, "  "+gs.Render(e.Group))
-			lines = append(lines, "")
-			lastGroup = e.Group
+			if isCursor {
+				marker = "> "
+				gs = selectedStyle
+			}
+			label := truncateForPanel(n.group, maxW-6)
+			lines = append(lines, "  "+marker+gs.Render(arrow+" "+label))
+			continue
 		}
 
-		marker := "  "
+		e := m.entries[n.entryIdx]
+		marker := "    " // indented under the group
 		style := normalStyle
 		if e.Group == problemsGroup || e.Group == "Problems" {
 			style = warnStyle
 		}
-		if i == m.cursor {
-			marker = "> "
+		if isCursor {
+			marker = "  > "
 			style = selectedStyle
 		}
-		label := e.Label
-		// Truncate to fit panel width (accounting for marker + padding)
-		maxLabel := maxW - 6
-		if maxLabel > 0 && len(label) > maxLabel {
-			label = label[:maxLabel-3] + "..."
-		}
+		label := truncateForPanel(e.Label, maxW-8)
 		lines = append(lines, "  "+marker+style.Render(label))
-	}
-
-	if len(m.entries) == 0 {
-		lines = append(lines, "  "+StyleFaint.Render("(empty)"))
+		if d := strings.TrimSpace(e.Description); d != "" {
+			desc := truncateForPanel(d, maxW-8)
+			lines = append(lines, "      "+StyleFaint.Render(desc))
+		}
 	}
 
 	return strings.Join(lines, "\n")
 }
 
+// truncateForPanel shortens s to fit within max display columns, appending
+// "..." when truncation occurs. Uses lipgloss.Width so multi-byte glyphs (CJK)
+// are accounted for correctly.
+func truncateForPanel(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	if lipgloss.Width(s) <= max {
+		return s
+	}
+	// Walk runes, accumulating width, stop when we'd exceed max-3.
+	target := max - 3
+	if target < 1 {
+		target = 1
+	}
+	var b strings.Builder
+	w := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if w+rw > target {
+			break
+		}
+		b.WriteRune(r)
+		w += rw
+	}
+	return b.String() + "..."
+}
+
 func (m MarkdownViewerModel) renderRight(maxW int) string {
-	if len(m.entries) == 0 || m.cursor >= len(m.entries) {
+	idx := m.currentEntryIndex()
+	if idx < 0 {
 		return "\n  " + StyleFaint.Render("(no content)")
 	}
 
-	e := m.entries[m.cursor]
+	e := m.entries[idx]
 
 	var raw string
 	if e.Content != "" {
@@ -339,11 +504,12 @@ var exportSanitizeRe = regexp.MustCompile(`[^a-zA-Z0-9._\-\p{Han}]+`)
 // the rendered markdown is written with a synthesized filename. The result
 // (or an error) is stored in m.status for the footer to display.
 func (m *MarkdownViewerModel) exportCurrent() {
-	if len(m.entries) == 0 || m.cursor >= len(m.entries) {
+	idx := m.currentEntryIndex()
+	if idx < 0 {
 		m.setStatus(i18n.T("mdviewer.export_empty"), true)
 		return
 	}
-	entry := m.entries[m.cursor]
+	entry := m.entries[idx]
 
 	dir, err := exportTargetDir()
 	if err != nil {

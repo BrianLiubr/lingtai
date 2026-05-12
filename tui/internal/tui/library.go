@@ -409,9 +409,10 @@ func buildAgentLibraryCatalog(agentDir string, lang string) []MarkdownEntry {
 				label += " " + sk.Version
 			}
 			entry := MarkdownEntry{
-				Label: label,
-				Group: b.name,
-				Path:  sk.Path,
+				Label:       label,
+				Description: sk.Description,
+				Group:       b.name,
+				Path:        sk.Path,
 			}
 			// For intrinsic capability/addon skills, concat SKILL.md +
 			// SKILL-{lang}.md for display (matches pre-rewrite behavior).
@@ -495,9 +496,10 @@ func buildLibraryEntries(libraryDir, lang string, skills []skillEntry, problems 
 				label += " " + sk.Version
 			}
 			entry := MarkdownEntry{
-				Label: label,
-				Group: bucket.name,
-				Path:  sk.Path,
+				Label:       label,
+				Description: sk.Description,
+				Group:       bucket.name,
+				Path:        sk.Path,
 			}
 			// For intrinsic skills, concat SKILL.md + SKILL-{lang}.md for display.
 			if bucket.name == "intrinsic" {
