@@ -17,7 +17,7 @@ The preset package owns the atomic `{llm, capabilities}` bundle layer — loadin
 | `List()` | `tui/internal/preset/preset.go:209` | saved (alphabetical) + templates (canonical order); each carries `Source` |
 | `Save(p)` | `tui/internal/preset/preset.go:330` | ALWAYS to `saved/`; never templates |
 | `RefreshTemplates()` | `tui/internal/preset/preset.go:394` | rewrites `templates/` from `BuiltinPresets()`, prunes retired |
-| `BuiltinPresets()` | `tui/internal/preset/preset.go:425` | minimax, zhipu, mimo, deepseek, openrouter, codex, custom |
+| `BuiltinPresets()` | `tui/internal/preset/preset.go:446` | minimax, zhipu, mimo, deepseek, gemini, kimi, openrouter, codex, custom |
 | `IsTemplate(p)` | `tui/internal/preset/preset.go:464` | canonical "is this read-only?" — prefer over `IsBuiltin(p.Name)` |
 | `RefFor(p)` | `tui/internal/preset/preset.go:473` | `~/.lingtai-tui/presets/{templates\|saved}/<name>.json` |
 | `ResolveRefs(refs, keys)` | `tui/internal/preset/preset.go:528` | health-check: Source, Exists, HasKey for each preset path |

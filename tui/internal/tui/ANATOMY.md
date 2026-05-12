@@ -15,7 +15,7 @@ Screen routing is centralized in the `App` struct (`app.go`), which holds every 
 - **`app.go:97-183`** — `NewApp`: constructor deciding initial view — mail view (returning user), first-run wizard (new user or rehydration), or recovery mode (global config lost, agents intact).
 - **`app.go:185-193`** — `App.Init()`: delegates to the initial view's `Init()`.
 - **`app.go:195-589`** — `App.Update()`: the central dispatcher. Three layers: (1) `WindowSizeMsg` forwarded to current view, (2) cross-view messages (`ViewChangeMsg`, `FirstRunDoneMsg`, `SetupSavedMsg`, `NirvanaDoneMsg`, `AddonSavedMsg`, etc.), (3) `KeyPressMsg` for `ctrl+c`/`q` quit, (4) fallthrough to current view's `Update()`.
-- **`app.go:591-956`** — `handlePaletteCommand`: maps slash-command strings to view transitions (`/doctor` → `appViewDoctor`, `/library` → `appViewCodex` (hidden `/codex` alias), `/skills` → `appViewLibrary`, etc.) and direct actions (`/suspend`, `/cpr`, `/refresh`, `/clear`, `/molt`, `/btw`, `/export`).
+- **`app.go:591-956`** — `handlePaletteCommand`: maps slash-command strings to view transitions (`/doctor` → `appViewDoctor`, `/knowledge` → `appViewCodex` (canonical; hidden `/library` and `/codex` aliases), `/skills` → `appViewLibrary`, etc.) and direct actions (`/suspend`, `/cpr`, `/refresh`, `/clear`, `/molt`, `/btw`, `/export`).
 - **`app.go:1104-1216`** — `switchToView(viewName string)`: the canonical route-to-view dispatcher used by `ViewChangeMsg` and palette commands returning to a view. Reconstructs models fresh on entry.
 - **`app.go:1218-1273`** — `App.View()`: delegates to current view's `View()`, wraps in `tea.NewView` with alt-screen + mouse mode.
 - **`app.go:1277-1465`** — portal launch, style helpers, `SetTUIVersion`.
@@ -34,7 +34,7 @@ Screen routing is centralized in the `App` struct (`app.go`), which holds every 
 - **`login.go:52-475`** — `LoginModel`. OAuth flows (Codex, Anthropic API key login). Constructor: `NewLoginModel` (`login.go:88`). Wired to `/login`.
 - **`agora.go:44-404`** — `AgoraModel`. Network sharing: import/export workflows, clone discovery, recipe bundle manager. Constructor: `NewAgoraModel` (`agora.go:67`). Wired to `/agora`.
 - **`system.go:117-380`** — `SystemModel`. Agent filesystem browser: init.json, .agent.json, pad.md, system prompt files, logs. Constructor: `NewSystemModel` (`system.go:138`). Wired to `/system`.
-- **`codex.go:18-283`** — `CodexModel`. Codex (knowledge archive) browser. Reads `codex/codex.json`, renders entries as markdown. Constructor: `NewCodexModel` (`codex.go:41`). Wired to `/library` (with hidden `/codex` alias).
+- **`codex.go:18-283`** — `CodexModel`. The `/knowledge` view — agent private knowledge browser. Scans each agent's `knowledge/<name>/KNOWLEDGE.md` folder layout via `buildAgentCodexEntries` (`codex_entries.go:36`); legacy `codex/codex.json` / `knowledge/knowledge.json` stores are read only via a one-time migration into the folder layout (`codex_entries.go:13-16`, `:40`). Constructor: `NewCodexModel` (`codex.go:41`). Wired to `/knowledge` (canonical) with hidden `/library` and `/codex` aliases.
 - **`mailbox.go:18-295`** — `MailboxModel`. Per-agent mail folder browser (inbox/sent/archive). Constructor: `NewMailboxModel` (`mailbox.go:46`). Wired to `/mailbox`.
 - **`nirvana.go:47-209`** — `NirvanaModel`. Confirmation screen for wiping `.lingtai/`. Constructor: `NewNirvanaModel` (`nirvana.go:56`). Emits `NirvanaDoneMsg` → triggers first-run wizard flow.
 - **`projects.go:35-448`** — `ProjectsModel`. Global project list browser. Constructor: `NewProjectsModel` (`projects.go:50`). Wired to `/projects`.
@@ -46,7 +46,7 @@ Screen routing is centralized in the `App` struct (`app.go`), which holds every 
 - **`input.go:26-277`** — `InputModel`. Reusable compose widget with textarea, paste support, and multiline expand. Used by `MailModel`.
 - **`palette.go:28-231`** — `PaletteModel`. Slash-command palette widget (type `/` to trigger, `/help` lists commands). Used by `MailModel` and `SettingsModel`.
 - **`styles.go:1-471`** — Theme system: `Theme` type, `ActiveTheme()`, `SetThemeByName()`, `Color*` constants, `themedTextareaStyles()`, lipgloss rendering helpers.
-- **`codex_entries.go:13-88`** — `buildAgentCodexEntries`: reads `codex/codex.json`, converts to `MarkdownEntry` slices for the `CodexModel`.
+- **`codex_entries.go:13-88`** — `buildAgentCodexEntries`: scans `knowledge/<name>/KNOWLEDGE.md` folders (after a one-time migration of legacy `codex/codex.json` / `knowledge/knowledge.json` stores via `migrateLegacyJSONStores`), converts to `MarkdownEntry` slices for the `CodexModel`.
 - **`mailbox_entries.go:17-321`** — `buildMailboxEntries`: reads per-agent mailbox folders, converts to `MarkdownEntry` slices for the `MailboxModel`.
 - **`recipe_entries.go:14-96`** — `buildRecipeEntries`: scans recipe directories for markdown files (greet, comment, covenant, procedures, skills).
 - **`recipe_save.go:14-202`** — Recipe save helpers: `recipeUsesCustomDir`, `sourceBundleDir`, `saveCustomRecipe`, `ApplyRecipeToAgent`.
@@ -73,7 +73,7 @@ Screen routing is centralized in the `App` struct (`app.go`), which holds every 
 ## State
 
 - **Writes:** per-project `settings.json` (orchestrator selection, mail page size, theme, language). Signal files on agent directories. `init.json` rewrites during setup/preset edits.
-- **Reads:** agent working directories (`.agent.json`, `.agent.heartbeat`, `init.json`, `codex/codex.json`, `mailbox/`, `logs/token_ledger.jsonl`, `history/chat_history.jsonl`, `system/*.md`, `.library/`). Global config (`~/.lingtai-tui/config.json`, `presets/`, `runtime/`).
+- **Reads:** agent working directories (`.agent.json`, `.agent.heartbeat`, `init.json`, `knowledge/<name>/KNOWLEDGE.md` (legacy `codex/codex.json` / `knowledge/knowledge.json` only via one-time migration), `mailbox/`, `logs/token_ledger.jsonl`, `history/chat_history.jsonl`, `system/*.md`, `.library/`). Global config (`~/.lingtai-tui/config.json`, `presets/`, `runtime/`).
 - **Ephemeral:** `App.currentView`, `App.startupBanner`, `App.recoveryMode`. All screens maintain local cursor positions, scroll offsets, and input buffers — lost on process exit (Bubble Tea is stateless across launches).
 
 ## Notes

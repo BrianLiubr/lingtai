@@ -10,9 +10,9 @@ Versioned, append-only, forward-only migration system for per-project `.lingtai/
 
 | Symbol | Citation | Purpose |
 |--------|----------|---------|
-| `CurrentVersion` | `tui/internal/migrate/migrate.go:12` | latest version compiled into this binary (currently 34) |
+| `CurrentVersion` | `tui/internal/migrate/migrate.go:12` | latest version compiled into this binary (currently 35) |
 | `Migration` struct | `tui/internal/migrate/migrate.go:20` | `{Version int, Name string, Fn func(string) error}` |
-| `migrations` slice | `tui/internal/migrate/migrate.go:27` | ordered list of all m001..m034, append-only |
+| `migrations` slice | `tui/internal/migrate/migrate.go:27` | ordered list of all m001..m035, append-only |
 | `Run(lingtaiDir)` | `tui/internal/migrate/migrate.go:68` | reads `meta.json` → runs pending migrations → persists atomically |
 | `StampCurrent(lingtaiDir)` | `tui/internal/migrate/migrate.go:114` | stamps `CurrentVersion` without running migrations (fresh projects) |
 | `metaFile` struct | `tui/internal/migrate/migrate.go:14` | `{Version int, AddonCommentCleanupNotified bool}` |
@@ -24,6 +24,7 @@ Versioned, append-only, forward-only migration system for per-project `.lingtai/
 | m030 | `tui/internal/migrate/m030_preset_dir_split.go` | split flat `presets/` → `templates/` + `saved/` |
 | m033 | `tui/internal/migrate/m033_strip_codex_api_key_env.go:21` | strip bogus `api_key_env` from saved codex presets |
 | m034 | `tui/internal/migrate/m034_library_skills_caps.go:17` | rename capability keys `codex`→`library` and `library`→`skills` |
+| m035 | `tui/internal/migrate/m035_remove_brief.go:21` | strip secretary-era brief plumbing: delete `system/brief.md`, drop `brief`/`brief_file` keys from each agent `init.json`, drop `brief` from `human/settings.json` |
 
 Each migration file exports one `func migrateXxx(lingtaiDir string) error`. m002 is a no-op `func(_ string) error { return nil }` — it preserves the version slot.
 

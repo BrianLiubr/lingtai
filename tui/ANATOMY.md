@@ -22,7 +22,8 @@ This folder is the self-contained Go module for the `lingtai-tui` terminal UI bi
 - **`exec_windows.go`** — `syscallExec` (windows): equivalent (process replacement differs on Windows).
 - **`Makefile:1-23`** — build, dev (fast local), cross-compile (darwin/linux × arm64/amd64), clean. Version stamp via `-ldflags "-X main.version=$(VERSION)"` where `VERSION` is `git describe --tags --always`.
 - **`i18n/i18n.go:10`** — `//go:embed en.json zh.json wen.json`. The only embed target in the root `tui/` package; all other embeds are in `internal/preset/`.
-- **`tui/internal/`** — all substantive packages (tui screens, preset engine, migration system, filesystem readers, process launcher, postman, timemachine, lock shims).
+- **`tui/internal/`** — all substantive packages (tui screens, preset engine, migration system, filesystem readers, process launcher, headless JSON CLI surface, postman, timemachine, lock shims).
+- **`tui/internal/headless/`** — JSON-emitting non-interactive surface. `RunPresets` (lists templates/saved presets as JSON), `RunSpawn` (creates a project + launches an agent), and `ExitError` (structured error codes). Wired from `main.go` via `bootstrapMain` (`main.go:895`), `presetsMain` (`main.go:905`), and `spawnMain` (`main.go:929`). For agents and scripts that drive `lingtai-tui` without the Bubble Tea UI.
 
 ## Connections
 
@@ -44,6 +45,7 @@ This folder is the self-contained Go module for the `lingtai-tui` terminal UI bi
   - `tui/internal/fs/` — filesystem readers for agent state
   - `tui/internal/config/` — bootstrap, venv, global config (`tui/internal/config/ANATOMY.md`)
   - `tui/internal/process/` — subprocess launcher
+  - `tui/internal/headless/` — JSON-emitting non-interactive CLI surface (`bootstrap`, `presets`, `spawn` subcommands)
   - `tui/internal/postman/` — UDP cross-internet mail relay
   - `tui/internal/timemachine/` — git-backed history daemon
   - `tui/i18n/` — en/zh/wen locale tables
