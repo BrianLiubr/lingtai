@@ -78,11 +78,6 @@ jobs:
               cd "tui" do
                 ldflags = "-X main.version=#{version}"
                 system "go", "build", *std_go_args(ldflags: ldflags), "-o", bin/"lingtai-tui", "."
-                # Create 'lingtai' alias for backward compatibility
-                # Only if 'lingtai' doesn't exist or is already a symlink to lingtai-tui
-                unless (bin/"lingtai").exist? && (!(bin/"lingtai").symlink? || (bin/"lingtai").readlink.to_s != "lingtai-tui")
-                  bin.install_symlink "lingtai-tui" => "lingtai"
-                end
               end
 
               cd "portal" do
@@ -97,7 +92,6 @@ jobs:
 
             test do
               assert_match "lingtai-tui", shell_output("#{bin}/lingtai-tui version 2>&1", 0)
-              assert_match "lingtai-tui", shell_output("#{bin}/lingtai version 2>&1", 0)
             end
           end
           FORMULA
