@@ -113,14 +113,46 @@ type PresetLibraryModel struct {
 	height int
 }
 
-// NewPresetLibraryModel constructs the screen with presets pre-loaded.
-// `lang` is the user's TUI language (en/zh/wen) and selects the tier
-// label vocabulary — stars for English, 夯/人上人/顶级/NPC/拉完了 for
-// Chinese-family locales.
+// NewPresetLibraryModel constructs the screen with the full global
+// preset library pre-loaded. `lang` is the user's TUI language
+// (en/zh/wen) and selects the tier label vocabulary — stars for
+// English, 夯/人上人/顶级/NPC/拉完了 for Chinese-family locales.
 func NewPresetLibraryModel(lang string, globalDir string) PresetLibraryModel {
 	presets, _ := preset.List()
 	return PresetLibraryModel{
 		presets:   presets,
+		cursor:    0,
+		lang:      lang,
+		globalDir: globalDir,
+	}
+}
+
+// NewPresetLibraryModelForAgent constructs the screen scoped to a
+// specific agent's manifest.preset.allowed list. Only presets whose
+// canonical path (preset.RefFor) appears in `allowed` are shown. Pass
+// nil/empty `allowed` to fall back to the full global library (same
+// behavior as NewPresetLibraryModel).
+//
+// This is the constructor used by `/presets` when an agent is active;
+// `/presets all` (the documented escape hatch) routes to
+// NewPresetLibraryModel directly to see the full global registry.
+func NewPresetLibraryModelForAgent(lang, globalDir string, allowed []string) PresetLibraryModel {
+	all, _ := preset.List()
+	if len(allowed) == 0 {
+		return PresetLibraryModel{presets: all, lang: lang, globalDir: globalDir}
+	}
+	allowSet := make(map[string]struct{}, len(allowed))
+	for _, ref := range allowed {
+		allowSet[ref] = struct{}{}
+	}
+	filtered := make([]preset.Preset, 0, len(allowed))
+	for _, p := range all {
+		if _, ok := allowSet[preset.RefFor(p)]; ok {
+			filtered = append(filtered, p)
+		}
+	}
+	return PresetLibraryModel{
+		presets:   filtered,
 		cursor:    0,
 		lang:      lang,
 		globalDir: globalDir,
