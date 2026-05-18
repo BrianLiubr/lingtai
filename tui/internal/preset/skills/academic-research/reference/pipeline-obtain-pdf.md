@@ -15,7 +15,8 @@ Given a DOI / arXiv ID / paper URL, retrieve the paper's full text (PDF or plain
 2. **Resolve metadata** — CrossRef (DOI) / OpenAlex / arXiv API.
 3. **Find free PDF** — Unpaywall / arXiv direct link / PMC.
 4. **Download PDF** — Direct download via curl / requests.
-5. **(If all OA channels fail) LibGen fallback** — See [libgen-fallback.md](libgen-fallback.md) for live mirror discovery and download.
+5. **(If OA channels fail, DOI is a supported publisher) Publisher-page extraction** — Nature/APS/AIP/IOP/Cambridge → structured Markdown with LaTeX preserved. See [publisher-page-extraction.md](publisher-page-extraction.md).
+6. **(If all of the above fail) LibGen fallback** — See [libgen-fallback.md](libgen-fallback.md) for live mirror discovery and download.
 6. **(If web page, not PDF) Extract web page body** — Select BeautifulSoup or Camoufox based on the site.
 7. **Extract text from PDF** — PyMuPDF text extraction.
 8. **Output** — Return `(status, filepath_or_text, metadata)`.
@@ -33,7 +34,7 @@ What is the input?
 │   ├─ CrossRef resolve metadata
 │   ├─ Unpaywall find free PDF
 │   │   ├─ Found → Download PDF → Extract text
-│   │   └─ Not found → CORE → Europe PMC → arXiv → LibGen (last resort, see libgen-fallback.md)
+│   │   └─ Not found → CORE → Europe PMC → arXiv → publisher-page extract (see publisher-page-extraction.md) → LibGen (last resort, see libgen-fallback.md)
 │   └─ OpenAlex supplementary metadata
 │
 ├─ arXiv ID (e.g. 2301.00001)

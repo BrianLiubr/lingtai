@@ -1,100 +1,143 @@
 ---
 name: academic-research
-description: "Deep-dive academic research skill — 12 API references (arXiv, CrossRef, OpenAlex, Semantic Scholar, CORE, PubMed, Unpaywall, Google Scholar, DOI Resolver, Europe PMC, NASA ADS, INSPIRE-HEP) + 6 pipeline workflows (discovery, PDF acquisition, citation tracking, scholar analysis, LaTeX writing, decision tree) + error handling patterns. Use this when you need detailed API parameters, code examples, and fallback chains for scholarly search and paper writing."
-version: 2.0.0
-tags: [academic, research, arxiv, crossref, openalex, semantic-scholar, core, pubmed, unpaywall, google-scholar, doi, pdf, citation, pipeline, europe-pmc, nasa-ads, inspire-hep, error-handling]
+description: >
+  Find papers, fetch full-text PDFs, trace citations, write LaTeX manuscripts.
+  **First action for any "get me this paper" request:**
+  `python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py <DOI|arXiv-ID|PMID>` — walks
+  arXiv → Unpaywall → Europe PMC → CORE → publisher-page extraction (Nature/APS/AIP/IOP/Cambridge)
+  → LibGen and saves the paper, metadata, and a resumable manifest under `papers/{slug}/`.
+  Read the body when you need to escape the script: custom query shapes, citation networks,
+  scholar analysis, LaTeX writing, or a tier-specific API call. Indexes 12 deep-dive API
+  references and 6 pipeline workflows under `reference/`.
+version: 3.0.0
+allowed-tools: Bash(python3 *) Bash(curl *) Bash(pip *) Bash(pip3 *)
+tags: [academic, research, arxiv, crossref, openalex, semantic-scholar, core, pubmed, unpaywall, doi, pdf, citation, pipeline, europe-pmc, nasa-ads, inspire-hep]
 parent: web-browsing
 ---
 
 # Academic Research
 
-> **This is a modular skill** — do NOT load the entire `reference/` directory into your context. Load specific reference files based on need (single API ref ≈ 1.5–3K tokens; single pipeline ≈ 2–3K tokens; full skill ≈ 42K tokens).
+> **This is a modular skill.** Try the bundled script first. Load specific
+> reference files only when you need to escape it.
 
-> If you navigated here from the web-browsing skill — web-browsing answers "which tier to use," while this skill answers "how to use a specific API."
+## Try this first
 
-## When to Use
+For 80% of "get me this paper" requests, the bundled script is the right answer.
+It walks the open-access ladder, falls back automatically, and writes a manifest
+the next session can resume from.
 
-- You already have a DOI, title, or author and need to retrieve paper metadata or full text
-- You need to systematically search scholarly literature
-- You need to trace citation networks or analyze research trends
-- You need a full-text PDF but aren't sure which source to use
+```bash
+# Fetch by any identifier
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py 10.1103/PhysRevLett.125.015001
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py arXiv:2301.00001
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py PMID:12345678
 
-## Decision Entry Point
+# Batch (one identifier per line in the file)
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py --batch dois.txt --out papers/
 
-**Not sure which API to start with?** → Read [reference/decision-tree.md](reference/decision-tree.md)
+# Resolve metadata only (no PDF download)
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py 10.1038/nature12373 --dry-run
 
-It routes you to the most appropriate API based on your input (DOI? arXiv ID? keywords? discipline?).
-
-## API References (12)
-
-Each reference includes: endpoint parameter tables, runnable code, response formats, rate limits, error handling, and cross-references.
-
-| API | Reference | Best For | Requires Key? |
-|-----|-----------|----------|---------------|
-| arXiv | [api-arxiv.md](reference/api-arxiv.md) | Preprint retrieval, CS/physics/math | No |
-| CrossRef | [api-crossref.md](reference/api-crossref.md) | DOI metadata, funder queries, new publications | No (mailto recommended) |
-| DOI Resolver | [api-doi-resolver.md](reference/api-doi-resolver.md) | Single/batch DOI resolution to structured citations | No |
-| OpenAlex | [api-openalex.md](reference/api-openalex.md) | Large-scale paper discovery, institution/concept analysis | No |
-| Semantic Scholar | [api-semantic-scholar.md](reference/api-semantic-scholar.md) | Citation networks, TLDR summaries, author profiles | No |
-| CORE | [api-core.md](reference/api-core.md) | Open-access full-text downloads | Optional |
-| PubMed | [api-pubmed.md](reference/api-pubmed.md) | Biomedical literature search, PMC full text | No |
-| Unpaywall | [api-unpaywall.md](reference/api-unpaywall.md) | Find OA versions/PDFs of papers | email parameter (not a placeholder) |
-| Google Scholar | [api-google-scholar.md](reference/api-google-scholar.md) | Broadest discipline coverage, citation counts (requires scraping) | No (requires stealth) |
-| Europe PMC | [api-europe-pmc.md](reference/api-europe-pmc.md) | Biomedical literature, PMID lookup, full-text XML | No |
-| NASA ADS | [api-nasa-ads.md](reference/api-nasa-ads.md) | Astrophysics/astronomy, BibTeX export, citation networks | Yes (free key) |
-| INSPIRE-HEP | [api-inspire-hep.md](reference/api-inspire-hep.md) | High-energy physics, author profiles, BibTeX export | No |
-
-## Pipeline Workflows (6)
-
-Each pipeline includes: workflow steps, decision trees, code examples, and failure fallbacks.
-
-| Pipeline | Reference | Purpose |
-|----------|-----------|---------|
-| Paper Discovery | [pipeline-discovery.md](reference/pipeline-discovery.md) | From keywords to a set of candidate papers |
-| PDF Acquisition | [pipeline-obtain-pdf.md](reference/pipeline-obtain-pdf.md) | From metadata to full-text PDF (with stealth) |
-| Citation Tracking | [pipeline-citation-tracking.md](reference/pipeline-citation-tracking.md) | Forward/backward citation networks |
-| Scholar Analysis | [pipeline-scholar-analysis.md](reference/pipeline-scholar-analysis.md) | Impact, trends, h-index |
-| LaTeX Writing | [pipeline-latex-writing.md](reference/pipeline-latex-writing.md) | Compile, bibliography, figures, debugging |
-| Decision Tree | [decision-tree.md](reference/decision-tree.md) | "I have X — which API should I use?" |
-
-## Quick Paths
-
-```
-I have a DOI          → api-doi-resolver.md → api-crossref.md → api-unpaywall.md for PDF
-I have an arXiv ID    → api-arxiv.md (direct PDF link)
-I have a PMID         → api-europe-pmc.md
-I have a bibcode      → api-nasa-ads.md (requires free key)
-I only have keywords  → decision-tree.md → pick API by discipline
-I need citation network → api-semantic-scholar.md or api-openalex.md
-I need full-text PDF  → pipeline-obtain-pdf.md (Unpaywall → CORE → Europe PMC → arXiv chain)
-All OA chains failed  → libgen-fallback.md (last resort, live mirror discovery)
-I need astrophysics   → api-nasa-ads.md
-I need high-energy physics → api-inspire-hep.md
-I need biomedical     → api-europe-pmc.md or api-pubmed.md
-I need to write/compile a paper → pipeline-latex-writing.md (compile + bib + figures + debug)
-I hit an API error    → error-handling.md (fallback chains, rate limit strategies)
+# Skip LibGen (e.g. legal-sensitive environment)
+python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_paper.py <id> --no-libgen
 ```
 
-## Error Handling
+**Output layout** (idempotent — re-runs skip entries with `status: ok`):
 
-Common failure patterns and fallback chains are documented in [error-handling.md](reference/error-handling.md):
-- 429 rate limiting → exponential backoff + API switch
-- 403 publisher blocks → Unpaywall → CORE → Europe PMC chain
-- Timeout patterns → per-API timeout guidance
-- Empty results → query diagnosis checklist
+```
+papers/{first-author-year-firstword}/
+├── paper.pdf  |  paper.md      # full-text artifact
+├── metadata.json                # CrossRef-normalized
+└── manifest.json                # {status, tier, source, ts, doi}
+```
+
+**Tier ladder** (script stops at first hit):
+
+| Tier | Source | Best for |
+|------|--------|----------|
+| 1 | arXiv direct | Preprints (physics, CS, math, q-bio, econ) |
+| 2 | Unpaywall | Publisher-blessed gold/green OA |
+| 3 | Europe PMC | Biomedical full-text + PMC mirror |
+| 4 | CORE | Institutional repositories (needs `$CORE_API_KEY`) |
+| 5 | Publisher-page extract | Nature/APS/AIP/IOP/Cambridge → structured Markdown with LaTeX preserved (auto-installs [zhiping0913/Download_paper](https://github.com/zhiping0913/Download_paper) on first use) |
+| 6 | LibGen | Last resort; opt out with `--no-libgen` |
+
+**Set `$LINGTAI_RESEARCH_EMAIL` to a real address** before first use — Unpaywall
+rejects placeholder emails with HTTP 422. The default falls back to
+`lingtai-agent@example.org` with a warning.
+
+Read on only if: the script fails on your paper, you need a custom query shape,
+or you're composing a multi-step workflow (search → fetch → cite → write).
+
+## Escape hatch — quick paths
+
+```
+I have a DOI                → reference/api-doi-resolver.md → api-crossref.md
+I have an arXiv ID          → reference/api-arxiv.md (direct PDF link)
+I have a PMID               → reference/api-europe-pmc.md
+I have a bibcode            → reference/api-nasa-ads.md (requires free key)
+I only have keywords        → reference/decision-tree.md → pick API by discipline
+I need a citation network   → reference/api-semantic-scholar.md or api-openalex.md
+I need to override the PDF ladder → reference/pipeline-obtain-pdf.md
+Tier-5 publisher-extract failed and I want to retry it manually → reference/publisher-page-extraction.md
+All OA chains failed        → reference/libgen-fallback.md (last resort)
+I need astrophysics         → reference/api-nasa-ads.md
+I need high-energy physics  → reference/api-inspire-hep.md
+I need biomedical           → reference/api-europe-pmc.md or api-pubmed.md
+I need to write/compile a paper → reference/pipeline-latex-writing.md
+I hit an API error          → reference/error-handling.md
+```
+
+## Reference index
+
+### API references (12)
+
+Each card includes endpoint parameters, runnable code, response shape, rate limits, and fallbacks.
+
+| API | File | Best for | Key? |
+|-----|------|----------|------|
+| arXiv | [api-arxiv.md](reference/api-arxiv.md) | Preprint retrieval | No |
+| CrossRef | [api-crossref.md](reference/api-crossref.md) | DOI metadata, funder queries | No (mailto recommended) |
+| DOI Resolver | [api-doi-resolver.md](reference/api-doi-resolver.md) | Batch DOI → structured citation | No |
+| OpenAlex | [api-openalex.md](reference/api-openalex.md) | Discovery, institution/concept analysis | No |
+| Semantic Scholar | [api-semantic-scholar.md](reference/api-semantic-scholar.md) | Citation networks, TLDR | No (tight limits) |
+| CORE | [api-core.md](reference/api-core.md) | OA full-text downloads | Optional (recommended) |
+| PubMed | [api-pubmed.md](reference/api-pubmed.md) | Biomedical search, PMC full text | No |
+| Unpaywall | [api-unpaywall.md](reference/api-unpaywall.md) | OA versions / PDFs | email (real) |
+| Google Scholar | [api-google-scholar.md](reference/api-google-scholar.md) | Broadest discipline coverage | No (needs stealth) |
+| Europe PMC | [api-europe-pmc.md](reference/api-europe-pmc.md) | Biomed, PMID, full-text XML | No |
+| NASA ADS | [api-nasa-ads.md](reference/api-nasa-ads.md) | Astrophysics, BibTeX export | Yes (free) |
+| INSPIRE-HEP | [api-inspire-hep.md](reference/api-inspire-hep.md) | High-energy physics | No |
+
+### Pipeline workflows (6)
+
+| Pipeline | File | Purpose |
+|----------|------|---------|
+| Paper discovery | [pipeline-discovery.md](reference/pipeline-discovery.md) | Keywords → candidate papers |
+| PDF acquisition | [pipeline-obtain-pdf.md](reference/pipeline-obtain-pdf.md) | Metadata → full text (manual ladder) |
+| Citation tracking | [pipeline-citation-tracking.md](reference/pipeline-citation-tracking.md) | Forward/backward citation networks |
+| Scholar analysis | [pipeline-scholar-analysis.md](reference/pipeline-scholar-analysis.md) | Impact, trends, h-index |
+| LaTeX writing | [pipeline-latex-writing.md](reference/pipeline-latex-writing.md) | Compile, bibliography, figures, debug |
+| Decision tree | [decision-tree.md](reference/decision-tree.md) | "I have X — which API should I use?" |
+
+### Standalone references
+
+- [publisher-page-extraction.md](reference/publisher-page-extraction.md) — Tier-5 manual escape hatch (Nature/APS/AIP/IOP/Cambridge → structured Markdown)
+- [libgen-fallback.md](reference/libgen-fallback.md) — Last-resort PDF source with legal/safety notes
+- [error-handling.md](reference/error-handling.md) — 429 backoff, 403 publisher blocks, timeout patterns
 
 ## Relationship to web-browsing
 
-- **web-browsing**: routing layer — "which tier to use?" (PDF direct? API metadata? trafilatura? Playwright?)
-- **academic-research**: deep-dive layer — "how do I write filter parameters for OpenAlex? What email should I use for Unpaywall?"
-- The two are complementary and non-overlapping.
+- **web-browsing** is the routing layer ("which tier to use for this URL?")
+- **academic-research** is the deep-dive layer ("how do I write OpenAlex filter parameters? what email does Unpaywall want?")
+- The two are complementary. If you're just scraping one publisher page and don't need the OA ladder, web-browsing's `extract_page.py` is lighter.
 
-## Known Caveats
+## Known caveats
 
-- Google Scholar requires a stealth browser (camoufox or playwright-stealth v2); do not use the legacy `playwright_stealth` API
-- Unpaywall's email parameter is **required** and **must be a real address** — it serves as the sole "authentication". Placeholder emails (e.g., `test@example.com`) will return 422 errors.
-- arXiv enforces HTTPS; HTTP requests are automatically redirected via 301
-- **CORE without an API key is extremely limited** — aggressive rate limits (429 after just a few requests). Register at https://core.ac.uk/services/api for a free key (increases quota from ~100/day to 10,000/day). See [api-core.md](reference/api-core.md).
-- **Semantic Scholar free tier is very tight** — ~100 requests per 5 minutes without key, 1 req/s with key. Request an API key for any serious use. See [api-semantic-scholar.md](reference/api-semantic-scholar.md).
-- **Library Genesis (LibGen)** is available as a last-resort fallback when all legitimate OA channels (Unpaywall, CORE, Europe PMC, arXiv) have been exhausted. Legal status varies by jurisdiction — use is solely the user's responsibility. See [libgen-fallback.md](reference/libgen-fallback.md).
-- For comprehensive error handling strategies, see [error-handling.md](reference/error-handling.md)
+- **Unpaywall's `email` parameter is required and must be real** — placeholder addresses get HTTP 422. Set `$LINGTAI_RESEARCH_EMAIL` once.
+- **CORE without an API key is harshly rate-limited** (~100/day vs 10,000/day with a free key from https://core.ac.uk/services/api).
+- **Semantic Scholar free tier is very tight** (~100 reqs / 5 min). Request a key for any serious citation-network work.
+- **Google Scholar requires a stealth browser** (camoufox or playwright-stealth v2); legacy `playwright_stealth` API does not work.
+- **arXiv enforces HTTPS** — HTTP requests are 301-redirected automatically.
+- **Library Genesis legality varies by jurisdiction** — use is the user's responsibility. Pass `--no-libgen` to opt out.
+- **Publisher-page extraction (Tier 5)** uses Playwright + pandoc; first invocation installs `zhiping0913/Download_paper` from git. Requires Chromium (`playwright install chromium`) and pandoc on `$PATH`. See [reference/publisher-page-extraction.md](reference/publisher-page-extraction.md).
