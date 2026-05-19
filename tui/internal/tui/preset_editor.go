@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/anthropics/lingtai-tui/i18n"
 	"github.com/anthropics/lingtai-tui/internal/preset"
@@ -267,6 +268,7 @@ type PresetEditorModel struct {
 	// Display
 	width, height int
 	lang          string // "en"/"zh"/"wen" — drives tier label rendering
+	scrollOffset  int    // first rendered form row; keeps focused field visible in short terminals
 
 	// showJSON controls whether the right-hand JSON preview pane renders.
 	// Hidden by default — the form is the source of truth and the JSON
@@ -367,7 +369,20 @@ func (m PresetEditorModel) Update(msg tea.Msg) (PresetEditorModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureFocusedVisible()
 		return m, nil
+
+	case tea.MouseWheelMsg:
+		if m.mode == emBrowse {
+			mouse := msg.Mouse()
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.moveCursor(-3)
+			case tea.MouseWheelDown:
+				m.moveCursor(3)
+			}
+			return m, nil
+		}
 
 	case tea.KeyMsg:
 		switch m.mode {
@@ -422,14 +437,24 @@ func (m PresetEditorModel) updateBrowse(msg tea.KeyMsg) (PresetEditorModel, tea.
 		m.mode = emExitPrompt
 		return m, nil
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		m.moveCursor(-1)
 		return m, nil
 	case "down", "j":
-		if m.cursor < len(editorFieldOrder)-1 {
-			m.cursor++
-		}
+		m.moveCursor(1)
+		return m, nil
+	case "pgup":
+		m.moveCursor(-m.visibleFormRows())
+		return m, nil
+	case "pgdown":
+		m.moveCursor(m.visibleFormRows())
+		return m, nil
+	case "home":
+		m.cursor = 0
+		m.ensureFocusedVisible()
+		return m, nil
+	case "end":
+		m.cursor = saveFieldIndex
+		m.ensureFocusedVisible()
 		return m, nil
 	case "left", "h":
 		// Cycle backwards on enum fields.
@@ -444,12 +469,14 @@ func (m PresetEditorModel) updateBrowse(msg tea.KeyMsg) (PresetEditorModel, tea.
 		// Shift+Tab returns to the previously-focused field.
 		m.savedCursor = m.cursor
 		m.cursor = saveFieldIndex
+		m.ensureFocusedVisible()
 		return m, nil
 	case "shift+tab":
 		// Restore the cursor to wherever Tab jumped from. If we
 		// haven't tabbed-to-save yet, no-op.
 		if m.cursor == saveFieldIndex && m.savedCursor >= 0 && m.savedCursor < len(editorFieldOrder) {
 			m.cursor = m.savedCursor
+			m.ensureFocusedVisible()
 		}
 		return m, nil
 	case " ":
@@ -1108,9 +1135,9 @@ func (m PresetEditorModel) View() string {
 		return ""
 	}
 
-	bodyHeight := m.height - 3
-	if bodyHeight < 6 {
-		bodyHeight = 6
+	bodyHeight := m.height - 4
+	if bodyHeight < 3 {
+		bodyHeight = 3
 	}
 
 	// Title bar.
@@ -1152,6 +1179,12 @@ func (m PresetEditorModel) View() string {
 	return full
 }
 
+type presetEditorRow struct {
+	text     string
+	field    editorField
+	hasField bool
+}
+
 func (m PresetEditorModel) renderForm(width, height int) string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -1160,46 +1193,93 @@ func (m PresetEditorModel) renderForm(width, height int) string {
 		Height(height).
 		Padding(0, 1)
 
-	lbl := func(key string) string { return i18n.T("preset_editor.field_" + key) }
+	rows := m.formRows(width)
+	visibleRows := formContentHeight(height)
+	start := m.scrollOffset
+	if start < 0 {
+		start = 0
+	}
+	if maxStart := maxScrollStart(len(rows), visibleRows); start > maxStart {
+		start = maxStart
+	}
+	end := start + visibleRows
+	if end > len(rows) {
+		end = len(rows)
+	}
 
-	var rows []string
-	rows = append(rows, m.sectionHeader(i18n.T("preset_editor.section_identity")))
+	contentWidth := formInnerWidth(width)
+	visible := make([]string, 0, visibleRows)
+	for _, row := range rows[start:end] {
+		// Every semantic row must occupy exactly one terminal row.
+		// Several row builders contain ANSI styling, and plain rune-count
+		// truncation is not enough: lipgloss will wrap over-wide styled
+		// strings inside the bordered box, making the final Save row fall
+		// below the alt-screen viewport even when our semantic row slice
+		// includes it. Clamp the rendered row at the box's inner display
+		// width as a final safety net.
+		visible = append(visible, ansi.Truncate(row.text, contentWidth, "…"))
+	}
+
+	return box.Render(strings.Join(visible, "\n"))
+}
+
+func formInnerWidth(width int) int {
+	// renderForm sets total Width(width), a border on both sides, and
+	// horizontal padding of one cell on both sides. The text content must
+	// fit within what remains or lipgloss wraps it into extra visual rows.
+	inner := width - 4
+	if inner < 1 {
+		return 1
+	}
+	return inner
+}
+
+func (m PresetEditorModel) formRows(width int) []presetEditorRow {
+	lbl := func(key string) string { return i18n.T("preset_editor.field_" + key) }
+	row := func(f editorField, text string) presetEditorRow {
+		return presetEditorRow{text: text, field: f, hasField: true}
+	}
+	plain := func(text string) presetEditorRow { return presetEditorRow{text: text} }
+
+	var rows []presetEditorRow
+	rows = append(rows, plain(m.sectionHeader(i18n.T("preset_editor.section_identity"))))
 	// Name row renders the on-disk preset stem. Editable for non-builtins;
 	// for builtins, the clone-first overlay still gates renames on save.
-	rows = append(rows, m.row(feName, lbl("name"), m.working.Name, width-4))
-	rows = append(rows, m.row(feSummary, lbl("summary"), m.working.Description.Summary, width-4))
-	rows = append(rows, m.row(feTier, lbl("tier"), m.tierDisplay(), width-4))
-	rows = append(rows, m.row(feGains, lbl("gains"), asExtra(m.working.Description.Extra, "gains"), width-4))
-	rows = append(rows, m.row(feLoses, lbl("loses"), asExtra(m.working.Description.Extra, "loses"), width-4))
-	rows = append(rows, "")
-	rows = append(rows, m.sectionHeader(i18n.T("preset_editor.section_llm")))
+	rows = append(rows, row(feName, m.row(feName, lbl("name"), m.working.Name, width-4)))
+	rows = append(rows, row(feSummary, m.row(feSummary, lbl("summary"), m.working.Description.Summary, width-4)))
+	rows = append(rows, row(feTier, m.row(feTier, lbl("tier"), m.tierDisplay(), width-4)))
+	rows = append(rows, row(feGains, m.row(feGains, lbl("gains"), asExtra(m.working.Description.Extra, "gains"), width-4)))
+	rows = append(rows, row(feLoses, m.row(feLoses, lbl("loses"), asExtra(m.working.Description.Extra, "loses"), width-4)))
+	rows = append(rows, plain(""))
+	rows = append(rows, plain(m.sectionHeader(i18n.T("preset_editor.section_llm"))))
 	llm, _ := m.working.Manifest["llm"].(map[string]interface{})
-	rows = append(rows, m.row(feProvider, lbl("provider"), asString(llm["provider"]), width-4))
-	rows = append(rows, m.row(feModel, lbl("model"), asString(llm["model"]), width-4))
-	rows = append(rows, m.row(feAPICompat, lbl("api_compat"), asString(llm["api_compat"]), width-4))
-	rows = append(rows, m.row(feBaseURL, lbl("base_url"), asString(llm["base_url"]), width-4))
-	rows = append(rows, m.row(feAPIKey, lbl("api_key"), m.fieldString(feAPIKey), width-4))
-	rows = append(rows, "")
+	rows = append(rows, row(feProvider, m.row(feProvider, lbl("provider"), asString(llm["provider"]), width-4)))
+	rows = append(rows, row(feModel, m.row(feModel, lbl("model"), asString(llm["model"]), width-4)))
+	rows = append(rows, row(feAPICompat, m.row(feAPICompat, lbl("api_compat"), asString(llm["api_compat"]), width-4)))
+	rows = append(rows, row(feBaseURL, m.row(feBaseURL, lbl("base_url"), asString(llm["base_url"]), width-4)))
+	rows = append(rows, row(feAPIKey, m.row(feAPIKey, lbl("api_key"), m.fieldString(feAPIKey), width-4)))
+	rows = append(rows, plain(""))
 	// Mandatory capabilities — always included, not toggleable.
-	rows = append(rows, m.sectionHeader(i18n.T("preset_editor.section_mandatory")))
+	rows = append(rows, plain(m.sectionHeader(i18n.T("preset_editor.section_mandatory"))))
 	mandatoryCaps := []string{"email", "psyche", "soul", "system", "library", "skills"}
 	for _, capName := range mandatoryCaps {
-		rows = append(rows, m.mandatoryCapRow(capName, width-4))
+		rows = append(rows, plain(m.mandatoryCapRow(capName, width-4)))
 	}
-	rows = append(rows, "")
-	rows = append(rows, m.sectionHeader(i18n.T("preset_editor.section_core")))
+	rows = append(rows, plain(""))
+	rows = append(rows, plain(m.sectionHeader(i18n.T("preset_editor.section_core"))))
 	for _, capName := range coreCapabilities {
-		rows = append(rows, m.capRow(capFieldFor(capName), capName, width-4))
+		f := capFieldFor(capName)
+		rows = append(rows, row(f, m.capRow(f, capName, width-4)))
 	}
-	rows = append(rows, "")
-	rows = append(rows, m.sectionHeader(i18n.T("preset_editor.section_capabilities")))
+	rows = append(rows, plain(""))
+	rows = append(rows, plain(m.sectionHeader(i18n.T("preset_editor.section_capabilities"))))
 	for _, capName := range extraCapabilities {
-		rows = append(rows, m.capRow(capFieldFor(capName), capName, width-4))
+		f := capFieldFor(capName)
+		rows = append(rows, row(f, m.capRow(f, capName, width-4)))
 	}
-	rows = append(rows, "")
-	rows = append(rows, m.renderSaveButton())
-
-	return box.Render(strings.Join(rows, "\n"))
+	rows = append(rows, plain(""))
+	rows = append(rows, row(feSave, m.renderSaveButton()))
+	return rows
 }
 
 // row renders a single field row with focus styling. When the row is
@@ -1231,6 +1311,9 @@ func (m PresetEditorModel) row(f editorField, key, value string, width int) stri
 	}
 	if value == "" {
 		value = "—"
+	}
+	if f != feTier {
+		value = truncate(value, width-lipgloss.Width(marker)-15)
 	}
 	return marker + keyStyle.Render(key) + valStyle.Render(value)
 }
@@ -1268,6 +1351,7 @@ func (m PresetEditorModel) mandatoryCapRow(name string, width int) string {
 	keyCol := subtle.Render(lipgloss.NewStyle().Width(15).Render(name))
 	desc := i18n.T("firstrun.cap_desc." + name)
 	desc = strings.ReplaceAll(desc, "\n", "  ")
+	desc = truncate(desc, width-21)
 	val := subtle.Render(desc)
 	return "  " + check + " " + keyCol + val
 }
@@ -1500,6 +1584,80 @@ func (m PresetEditorModel) renderPreview(width, height int) string {
 	return box.Render(b.String())
 }
 
+func (m *PresetEditorModel) moveCursor(delta int) {
+	m.cursor += delta
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor > saveFieldIndex {
+		m.cursor = saveFieldIndex
+	}
+	m.ensureFocusedVisible()
+}
+
+func (m *PresetEditorModel) ensureFocusedVisible() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+	rows := m.formRows(m.width)
+	focused := m.focusedRowIndex(rows)
+	if focused < 0 {
+		return
+	}
+	visibleRows := m.visibleFormRows()
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	if focused < m.scrollOffset {
+		m.scrollOffset = focused
+	} else if focused >= m.scrollOffset+visibleRows {
+		m.scrollOffset = focused - visibleRows + 1
+	}
+	if maxStart := maxScrollStart(len(rows), visibleRows); m.scrollOffset > maxStart {
+		m.scrollOffset = maxStart
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+}
+
+func (m PresetEditorModel) focusedRowIndex(rows []presetEditorRow) int {
+	if m.cursor < 0 || m.cursor >= len(editorFieldOrder) {
+		return -1
+	}
+	focusedField := editorFieldOrder[m.cursor]
+	for i, row := range rows {
+		if row.hasField && row.field == focusedField {
+			return i
+		}
+	}
+	return -1
+}
+
+func (m PresetEditorModel) visibleFormRows() int {
+	return formContentHeight(m.height - 4)
+}
+
+func formContentHeight(boxHeight int) int {
+	// renderForm applies a rounded border and no vertical padding, so the
+	// interior content is the requested box height minus top/bottom border.
+	rows := boxHeight - 2
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
+func maxScrollStart(rowCount, visibleRows int) int {
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	if rowCount <= visibleRows {
+		return 0
+	}
+	return rowCount - visibleRows
+}
+
 func (m PresetEditorModel) renderFooter() string {
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	if m.saveErr != "" {
@@ -1640,23 +1798,14 @@ func (m PresetEditorModel) renderExitOverlay(_ string) string {
 // commit. Acts like a button users can find by tabbing down.
 func (m PresetEditorModel) renderSaveButton() string {
 	focused := editorFieldOrder[m.cursor] == feSave
-	label := i18n.T("preset_editor.save_button")
+	label := "[ " + i18n.T("preset_editor.save_button") + " ]"
 	if focused {
-		btn := lipgloss.NewStyle().
+		return "▸ " + lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("0")).
-			Background(ColorAccent).
-			Padding(0, 2).
-			Render(" " + label + " ")
-		return "▸ " + btn
+			Foreground(ColorAccent).
+			Render(label)
 	}
-	btn := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("245")).
-		Padding(0, 2).
-		Render(label)
-	return "  " + btn
+	return "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(label)
 }
 
 // ───────────────────────────────────────────────────────────────────────────

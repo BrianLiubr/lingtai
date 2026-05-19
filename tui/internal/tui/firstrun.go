@@ -843,6 +843,11 @@ func (m FirstRunModel) Update(msg tea.Msg) (FirstRunModel, tea.Cmd) {
 		return m, textinput.Blink
 
 	case tea.MouseWheelMsg:
+		if m.step == stepEditPreset {
+			updated, cmd := m.presetEditor.Update(msg)
+			m.presetEditor = updated
+			return m, cmd
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
