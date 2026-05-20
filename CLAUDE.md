@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Clarify human intent before coding
+
+When a human gives conceptual, corrective, or ambiguous feedback — especially phrases like "stop and think," "you overcomplicated this," or corrections that map to multiple implementations:
+
+1. **Pause coding.** Restate the intended contract and wait for confirmation when scope is ambiguous.
+2. **Classify findings.** Label each concern: confirmed defect, edge risk, future refactor, or documentation/process issue. Do not treat all concerns as immediate code changes.
+3. **Name the smallest change.** Identify the minimal fix. Do not expand into a broader refactor because nearby code is related.
+4. **No direct edits for self-initiated improvements.** All changes go through issue → branch → PR → merge. Direct edits are for explicitly requested emergency fixes only.
+5. **Stop after stop.** When a human says to stop coding, stop immediately. Switch to clarification or reporting only.
+
 ## Always work in a worktree, never directly in the main checkout
 
 For any non-trivial change (anything beyond a single-line typo fix), create a git worktree first and do the work there. Both this TUI repo and its sibling kernel repo see concurrent branches and stashed WIPs; editing the main checkout has repeatedly led to branch switches reverting in-flight edits, mixed-author dirty trees getting committed together, and lost work from parallel-session resets.
