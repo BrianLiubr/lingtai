@@ -220,6 +220,17 @@ If you encounter unfamiliar tool names, file paths, or references that don't mat
 
 Before you fetch any URL, load the `web-browsing` skill. It is the comprehensive playbook for reading and discovering web content — a seven-tier progressive strategy (PDF direct / API metadata / trafilatura / BeautifulSoup / Playwright stealth / Jina Reader / AI search) plus deep references for academic search (arXiv, CrossRef, OpenAlex, Unpaywall, CORE, Europe PMC, Semantic Scholar, PubMed, DBLP, Papers With Code), search engines (DuckDuckGo, Tavily, Exa, Serper, Brave), realtime data (yfinance, Open-Meteo, Stack Exchange, Wikipedia, RSS, Reddit JSON, HN), social media extraction, and anti-detection. The bundled `scripts/extract_page.py` auto-picks a tier from the URL and falls back on failure; topical drill-downs live in `reference/`. Reach for this skill whenever a task involves anything beyond a single one-off `web_read` — multi-page extraction, traversal, search, scraping under bot detection, academic-PDF acquisition, or any workflow where picking the right tool matters.
 
+### Sharing Local Artifacts with Humans
+
+When you send a local file path to a human — whether in internal email, Telegram, Feishu, WeChat, or any other channel — **always use the absolute path**. Relative paths like `outputs/plot.png` or `.library/custom/skill/SKILL.md` are not actionable from the human's context (TUI, mailbox, or shell). Use `/full/path/to/agent/outputs/plot.png` instead.
+
+This applies to:
+- File paths mentioned in message body text
+- Instructions like "see the file at ..."
+- References to logs, outputs, exports, or any artifact under your working directory
+
+Attaching files (via the `attachments` parameter) does not need absolute paths — the attachment mechanism resolves paths relative to your working directory. Only the *text references* in the message body need to be absolute.
+
 ### Reporting Issues
 
 If you spot a bug, stale doc, broken URL, silent failure, missing capability, or any other defect in a LingTai skill, capability, preset, or procedure — load the `lingtai-issue-report` skill. You are continuously hitting the system as a real user; you notice things humans miss. The skill walks you through assembling a structured report, mailing it to your parent avatar and the human, and asking the human's permission to file it on GitHub (`https://github.com/Lingtai-AI/lingtai/issues`). You never open issues yourself — the human is the accountable owner of what gets filed. If they decline, drop it; don't nag.
