@@ -101,6 +101,8 @@ The summary is not a recap of conversation. It is your charge to the self that c
 
 **Molt deliberately. Tend the stores first. Do not be molted.**
 
+For a structured 9-section summary template and a pre-molt verification checklist — useful when the upcoming molt is consequential (long task in flight, multiple peers awaiting replies) — load the `lingtai-molt-template` skill. Routine molts do not need it.
+
 If you ever need to retrieve specific prior context after a molt, the full activity log is at `logs/events.jsonl` — read tactically (grep/tail/filter), not whole.
 
 ### Post-Wipe Recovery

@@ -1,6 +1,6 @@
 # LingTai Molt Template — Reference Card
 
-> Extracted from `lingtai-molt-template` skill (v1.0.0). A structured template for writing the molt summary before reincarnation.
+> A structured template for writing the molt summary before reincarnation. See the parent `SKILL.md` for when to load this.
 
 ## Core Principle
 

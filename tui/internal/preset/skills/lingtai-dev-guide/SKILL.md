@@ -40,7 +40,7 @@ This skill is the single entry point for anyone developing on or contributing to
 | Ship a release | `reference/releasing.md` |
 | Diagnose a stuck, errored, or misbehaving agent | `reference/debug-troubleshoot.md` |
 | Audit security (secrets, permissions, data exposure) | `reference/security-audit.md` |
-| Prepare for a molt (checklist + template) | `reference/molt-template.md` |
+| Prepare for a molt (checklist + template) | `lingtai-molt-template` skill (separate skill) |
 | Manage avatar network lifecycle and health | `reference/network-governance.md` |
 | Sweep GitHub org for open issues/PRs | `reference/contributing.md` → Portfolio sweep section |
 | Navigate the kernel source code by structure | `lingtai-kernel-anatomy` skill (separate skill) |
@@ -169,7 +169,6 @@ For the full contributing guide (orchestrator/daemon discipline, portfolio sweep
 | `reference/releasing.md` | Release process for TUI/portal and kernel |
 | `reference/debug-troubleshoot.md` | Process, memory, communication, tools, health checks, escalation protocol |
 | `reference/security-audit.md` | Secret scanning, file permissions, MCP config, communication security, data exposure |
-| `reference/molt-template.md` | Four-layer storage prep, summary template, verification checklist |
 | `reference/network-governance.md` | Avatar lifecycle, permission management, health monitoring, CPR protocol |
 
 ## Troubleshooting & Maintenance
@@ -180,7 +179,7 @@ For the full contributing guide (orchestrator/daemon discipline, portfolio sweep
 
 ```
 Agent unresponsive?      → reference/debug-troubleshoot.md → Process diagnosis → Five lifecycle states lookup
-Lost memory after molt?  → reference/molt-template.md → Four-layer storage checklist
+Lost memory after molt?  → `lingtai-molt-template` skill → 9-section template + verification checklist
 Found exposed secrets?   → reference/security-audit.md → Secret scanning scripts
 Avatar network unstable? → reference/network-governance.md → Health monitoring + CPR protocol
 ```
@@ -202,6 +201,7 @@ Avatar network unstable? → reference/network-governance.md → Health monitori
 - **`lingtai-kernel-anatomy`** — the convention for `ANATOMY.md` files in the kernel. Read this when navigating kernel source.
 - **`lingtai-tui-anatomy`** — the convention for `ANATOMY.md` files in the Go monorepo. Read this when navigating TUI/portal source.
 - **`lingtai-issue-report`** — protocol for reporting bugs, stale docs, or design issues. Read this when you spot a defect.
+- **`lingtai-molt-template`** — structured 9-section template and pre-molt verification checklist. Load this when preparing for a consequential molt.
 - **`library-manual`** — how the skill library works. Read this when authoring or publishing skills.
 - **`mcp-manual`** — how MCP servers are registered and activated. Read this when working on addons.
 - **`lingtai-recipe`** — recipe authoring and network export. Read this when packaging or sharing methodologies.
