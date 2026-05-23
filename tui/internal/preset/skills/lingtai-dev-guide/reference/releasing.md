@@ -1,5 +1,47 @@
 # Release Process
 
+
+## Shareable HTML release log (required for every public release)
+
+Every public LingTai release must produce a polished, self-contained HTML release log before the final human report. This applies to all public release surfaces: the TUI/portal Homebrew release from the `lingtai` repo, the kernel `lingtai` package on PyPI, and first-party MCP/addon packages. Treat the HTML file as the canonical external-facing changelog artifact for the release: it should be ready for Jason or another maintainer to send to users, investors, or collaborators without needing extra context from the agent transcript.
+
+Use the recent `lingtai 0.10.8` PyPI log as the model. At minimum, the HTML release log must include:
+
+- **Executive summary:** one concise paragraph saying what shipped and why it matters.
+- **Release metadata:** repo, package/binary name, version, tag, release branch or PR, main/release commit, release date/time, and publisher/operator.
+- **What changed:** grouped bullets for the user-visible changes, developer-facing changes, and docs/process changes included in the release.
+- **Validation:** tests, linters, build checks, clean-install checks, Homebrew/PyPI/GitHub verification, and any intentionally skipped noisy suites.
+- **Artifacts:** links plus hashes/sizes when applicable (PyPI wheel/sdist, GitHub release tarball checksum, Homebrew formula commit, downloadable assets).
+- **Operator notes and risks:** known caveats, propagation delays, rollback/retry notes, compatibility warnings, or follow-up work that should not block the release.
+- **Next steps:** the exact user/maintainer actions that remain, or an explicit “none” if the release is complete.
+
+Format rules:
+
+- Keep it **self-contained**: inline CSS, no remote fonts/scripts/assets, and no dependency on local paths.
+- Keep it **shareable**: write for an external reader, not for an agent; do not include secrets, raw private paths unless they are public repo paths, or internal message IDs.
+- Keep it **verifiable**: every version/tag/hash/test count in the report must come from commands run during the release.
+- Save the file under the releasing repo's `reports/` directory with a descriptive name, for example `reports/lingtai-0.10.8-release-log.html`.
+- Use `reference/release-html-log-template.html` as the starter skeleton when you do not already have a stronger release-specific design.
+
+Before announcing completion, validate the log itself:
+
+```bash
+python - <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+path = Path('reports/<release-log>.html')
+data = path.read_text(encoding='utf-8')
+data.encode('utf-8')
+class Parser(HTMLParser):
+    pass
+Parser().feed(data)
+print('bytes:', path.stat().st_size)
+print('control chars:', sum(1 for c in data if ord(c) < 32 and c not in '\n\r\t'))
+PY
+```
+
+Attach or send the HTML release log to Jason on the same channel as the release request, then include its path and validation result in the final release report.
+
 ## Releasing the TUI and Portal (`lingtai` repo)
 
 ### 1. Commit and push all changes
