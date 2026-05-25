@@ -420,7 +420,7 @@ func (m ProjectsModel) renderRight(maxW int) string {
 	}
 	if net.Activity.Status != "" {
 		c := lipgloss.NewStyle().Foreground(NetworkActivityColor(net.Activity.Status))
-		lines = append(lines, "  "+labelStyle.Render("network: ")+c.Render(net.Activity.Status))
+		lines = append(lines, "  "+labelStyle.Render(networkActivityLabel()+": ")+c.Render(networkActivityStatusLabel(net.Activity.Status)))
 	}
 
 	// Mail count

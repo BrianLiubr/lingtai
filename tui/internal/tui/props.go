@@ -665,7 +665,7 @@ func (m PropsModel) renderRight(maxW int) string {
 	}
 	if m.network.Activity.Status != "" {
 		c := lipgloss.NewStyle().Foreground(NetworkActivityColor(m.network.Activity.Status))
-		lines = append(lines, "  "+labelStyle.Render("network: ")+c.Render(m.network.Activity.Status))
+		lines = append(lines, "  "+labelStyle.Render(networkActivityLabel()+": ")+c.Render(networkActivityStatusLabel(m.network.Activity.Status)))
 	}
 
 	// Tokens

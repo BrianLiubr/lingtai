@@ -1008,7 +1008,7 @@ func (m MailModel) networkActivityBadge() string {
 		return ""
 	}
 	style := lipgloss.NewStyle().Foreground(NetworkActivityColor(m.networkActivity.Status))
-	return StyleFaint.Render(" · net: ") + style.Render(m.networkActivity.Status)
+	return StyleFaint.Render(" · "+networkActivityShortLabel()+": ") + style.Render(networkActivityStatusLabel(m.networkActivity.Status))
 }
 
 // AddSystemMessage shows a transient status message in the status bar.
