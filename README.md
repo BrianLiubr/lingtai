@@ -13,6 +13,7 @@
 [![License](https://img.shields.io/github/license/Lingtai-AI/lingtai?color=%237dab8f)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-lingtai--kernel-%237dab8f)](https://github.com/Lingtai-AI/lingtai-kernel)
 [![Site](https://img.shields.io/badge/site-lingtai.ai-%23d4a853)](https://lingtai.ai)
+[![Discord](https://img.shields.io/badge/discord-join-%235865F2?logo=discord&logoColor=white)](https://discord.gg/cMchjXpg)
 
 </div>
 
@@ -45,6 +46,8 @@ The core design is simple:
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Project philosophy](#project-philosophy)
+- [Community](#community)
+- [Star history](#star-history)
 - [License](#license)
 
 ## Why LingTai exists
@@ -273,7 +276,7 @@ The TUI can guide portal usage; the portal code lives in `portal/` and embeds a 
 
 ## External channels and MCP addons
 
-LingTai uses MCP servers for external integrations. The currently curated addon family includes:
+LingTai uses MCP servers for external integrations. These are runtime bridges: they let the same long-lived agent process receive and send through external services while keeping its normal memory, tools, and mail history. The currently curated addon family includes:
 
 | Addon | Purpose |
 |---|---|
@@ -281,6 +284,8 @@ LingTai uses MCP servers for external integrations. The currently curated addon 
 | `telegram` | Telegram bot send/receive. |
 | `feishu` | Feishu/Lark messaging. |
 | `wechat` | WeChat messaging through iLink/gewechat-style bridges. |
+
+The `wechat` addon is for connecting an agent to WeChat as an external message channel. It is separate from the project community WeChat group listed below.
 
 Design rule: addon-specific setup knowledge belongs to the addon package. The TUI provides the human-facing control panel; agents use MCP resources/tools and the addon's own onboarding resources.
 
@@ -553,6 +558,14 @@ The goal is not agent theater. The goal is to make useful long-running AI collab
 - Main repo: <https://github.com/Lingtai-AI/lingtai>
 - Kernel repo: <https://github.com/Lingtai-AI/lingtai-kernel>
 - Homebrew tap: <https://github.com/Lingtai-AI/homebrew-lingtai>
+- Discord: <https://discord.gg/cMchjXpg>
+- GitHub issues: <https://github.com/Lingtai-AI/lingtai/issues>
+- GitHub discussions: <https://github.com/Lingtai-AI/lingtai/discussions>
+
+For Chinese-language discussion and early testing, join the WeChat group by scanning the QR code below. Add the author on WeChat and mention `lingtai`; if the QR code expires, please open an issue and we will refresh it.
+
+<img src="docs/assets/wechat.png" alt="WeChat QR code for joining the LingTai testing group" width="200">
+
 
 ## Star history
 
