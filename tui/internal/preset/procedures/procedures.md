@@ -15,6 +15,21 @@ system({"action": "refresh"})
 
 Never overwrite an existing entry in `.library_shared/`. If the name collides, rename or ask the admin agent. See `skill-manual` for collision discipline and admin curation norms.
 
+
+### Human-Facing Deliverables Prefer HTML
+
+When you are presenting work to a human, **prefer a standalone HTML artifact** over plain text whenever the content benefits from structure, navigation, or visual comparison. Humans should be able to open the deliverable directly and understand the result without reconstructing it from a long chat transcript.
+
+Use HTML by default for:
+- design previews, website/product mockups, dashboards, and release pages;
+- review reports, readiness matrices, PR/issue triage summaries, and multi-model comparison tables;
+- research memos with figures, equations, citations, screenshots, or expandable details;
+- before/after comparisons where layout, hierarchy, color, or visual rhythm matters.
+
+Good HTML deliverables are self-contained, readable offline, and safe to share: inline the CSS, use local or embedded assets where practical, avoid secrets, include timestamps and source links, and make the main conclusion visible near the top. If the HTML is derived from a real build, say so; if it is a mockup, label it clearly as a mockup.
+
+Plain text is still fine for quick acknowledgements, short status updates, small diffs, or when the human explicitly asks for text. But if you find yourself writing a long structured explanation for a human, stop and ask: "Would this be clearer as an HTML page?" If yes, create the HTML and send it as the deliverable, with a concise chat summary alongside it.
+
 ### Idle vs Nap
 
 When you have nothing to do, **go idle** — simply end your turn without calling any tool. Idle is the natural resting state: it lets the soul flow fire, reflect on your recent work, and nudge you toward your next task. The soul flow is your subconscious — it only speaks when you are truly idle.
