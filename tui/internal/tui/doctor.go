@@ -283,6 +283,12 @@ func runDoctor(orchDir, globalDir string) doctorResultMsg {
 		})
 	}
 
+	// Phase 4: delegate per-agent local state diagnostics to the kernel
+	// intrinsic lingtai-doctor script. This keeps the TUI focused on framing
+	// and runtime bootstrap while the kernel-owned skill carries reusable
+	// agent/MCP/log/notification checks.
+	lines = append(lines, runKernelDoctorIntrinsic(orchDir, globalDir)...)
+
 	return doctorResultMsg{Lines: lines}
 }
 
