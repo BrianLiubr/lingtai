@@ -270,6 +270,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.mail.refreshMail
 
+	case clearDoneMsg:
+		if msg.err != nil {
+			a.mail.AddSystemMessage(i18n.TF("mail.clear_failed", firstLine(msg.err)))
+		} else if msg.completed {
+			a.mail.AddSystemMessage(i18n.T("mail.cleared"))
+		} else {
+			a.mail.AddSystemMessage(i18n.T("mail.clear_requested"))
+		}
+		return a, a.mail.refreshMail
+
 	case refreshAllDoneMsg:
 		if len(msg.failures) > 0 {
 			a.mail.AddSystemMessage(i18n.TF("mail.refresh_all_with_failures", msg.count-len(msg.failures), len(msg.failures), strings.Join(msg.failures, ", ")))
@@ -622,23 +632,8 @@ func (a App) handlePaletteCommand(command, args string) (tea.Model, tea.Cmd) {
 			lingtaiCmd := a.lingtaiCmd
 			dir := targetDir
 			return a, func() tea.Msg {
-				// Suspend and wait for process to die
-				suspendFile := filepath.Join(dir, ".suspend")
-				os.WriteFile(suspendFile, []byte(""), 0o644)
-				lockFile := filepath.Join(dir, ".agent.lock")
-				for i := 0; i < 40; i++ {
-					if tryLock(lockFile) {
-						break
-					}
-					time.Sleep(250 * time.Millisecond)
-				}
-				os.Remove(suspendFile)
-				// Wipe conversation history (token ledger is preserved)
-				os.Remove(filepath.Join(dir, "history", "chat_history.jsonl"))
-				os.Remove(filepath.Join(dir, "system", "context.md"))
-				// Relaunch with clean context
-				_, err := process.LaunchAgent(lingtaiCmd, dir)
-				return refreshDoneMsg{err: err}
+				completed, err := requestClearContext(lingtaiCmd, dir)
+				return clearDoneMsg{completed: completed, err: err}
 			}
 		}
 		return a, nil
