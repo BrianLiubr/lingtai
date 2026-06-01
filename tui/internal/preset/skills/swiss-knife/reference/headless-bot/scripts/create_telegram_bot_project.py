@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a fresh LingTai project with Telegram MCP wiring.
+"""Create a fresh LingTai bot project with Telegram MCP wiring.
 
 The token is read from TELEGRAM_BOT_TOKEN so it does not appear in argv.
 All status output avoids printing the token.
@@ -104,6 +104,26 @@ def ensure_telegram_init(init_path: Path) -> None:
     write_json(init_path, init)
 
 
+def apply_preset_policy(init_path: Path, source_init_path: Path) -> None:
+    source = load_json(source_init_path)
+    source_manifest = source.get("manifest")
+    if not isinstance(source_manifest, dict):
+        raise SystemExit(f"{source_init_path}: missing manifest object")
+    preset_policy = source_manifest.get("preset")
+    if not isinstance(preset_policy, dict):
+        raise SystemExit(f"{source_init_path}: missing manifest.preset policy object")
+
+    target = load_json(init_path)
+    target_manifest = target.get("manifest")
+    if target_manifest is None:
+        target_manifest = {}
+    if not isinstance(target_manifest, dict):
+        raise SystemExit(f"{init_path}: top-level manifest exists but is not an object")
+    target_manifest["preset"] = preset_policy
+    target["manifest"] = target_manifest
+    write_json(init_path, target)
+
+
 def run_spawn(args: argparse.Namespace) -> dict[str, Any]:
     cmd = [
         "lingtai-tui",
@@ -138,6 +158,11 @@ def main() -> int:
     parser.add_argument("--allowed-users", required=True, help="Comma-separated Telegram numeric user IDs")
     parser.add_argument("--alias", default="main")
     parser.add_argument("--poll-interval", default=1.0, type=float)
+    parser.add_argument(
+        "--preset-policy-from",
+        type=Path,
+        help="Optional source agent init.json whose manifest.preset policy should be copied by reference",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -166,6 +191,8 @@ def main() -> int:
 
     init_path = agent_dir / "init.json"
     ensure_telegram_init(init_path)
+    if args.preset_policy_from:
+        apply_preset_policy(init_path, args.preset_policy_from)
 
     refresh_path = agent_dir / ".refresh"
     refresh_path.touch()
@@ -178,6 +205,7 @@ def main() -> int:
         "telegram_config": str(secrets_dir / "telegram.json"),
         "init_json": str(init_path),
         "refresh_signal": str(refresh_path),
+        "preset_policy_from": str(args.preset_policy_from) if args.preset_policy_from else None,
         "next_checks": [
             "lingtai-tui list <project_dir>",
             "Bot API getMe with token redacted",

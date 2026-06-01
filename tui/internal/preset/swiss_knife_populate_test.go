@@ -27,6 +27,8 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 		"reference/token-usage/scripts/custom_pricing.json",
 		"reference/html-report/SKILL.md",
 		"reference/html-report/assets/template.html",
+		"reference/headless-bot/SKILL.md",
+		"reference/headless-bot/scripts/create_telegram_bot_project.py",
 		"reference/xiaomi-mimo/SKILL.md",
 		"reference/zhipu-coding-plan/SKILL.md",
 	} {
@@ -41,6 +43,8 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 		"opencode/SKILL.md",
 		"token-usage/SKILL.md",
 		"html-report/SKILL.md",
+		"headless-telegram-bot/SKILL.md",
+		"reference/headless-telegram-bot/SKILL.md",
 	} {
 		if _, err := os.Stat(filepath.Join(utilitiesDir, old)); !os.IsNotExist(err) {
 			t.Fatalf("old swiss-knife child path %s should not be extracted outside reference/ (err=%v)", old, err)

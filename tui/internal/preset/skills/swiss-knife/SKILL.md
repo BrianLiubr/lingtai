@@ -7,11 +7,11 @@ description: >
   opencode for coding CLIs; minimax-cli for MiniMax media/TTS/vision; token-usage
   for token/cost reports; html-report for standalone browser deliverables;
   xiaomi-mimo for Xiaomi MiMo provider discovery; zhipu-coding-plan for Z.AI /
-  BigModel coding-plan capabilities; headless-telegram-bot for provisioning
-  fresh LingTai Telegram bot projects from `lingtai-tui spawn`. This parent is
-  the route map; each nested reference is self-contained under
+  BigModel coding-plan capabilities; headless-bot for provisioning fresh
+  LingTai bot projects such as Telegram bots from `lingtai-tui spawn`. This
+  parent is the route map; each nested reference is self-contained under
   `reference/<name>/SKILL.md`.
-version: 2.0.0
+version: 2.0.1
 tags: [utilities, umbrella, toolkit, nested-skill]
 ---
 
@@ -75,13 +75,13 @@ nested_references:
       Nested swiss-knife reference for the Zhipu / Z.AI / BigModel coding-plan
       subscription. Read this when the human asks about Zhipu credentials or the
       plan's vision, web search, web-read, and zread MCP capabilities.
-  - name: headless-telegram-bot
-    location: reference/headless-telegram-bot/SKILL.md
+  - name: headless-bot
+    location: reference/headless-bot/SKILL.md
     description: >
-      Nested swiss-knife reference and helper for creating a fresh LingTai
-      Telegram bot project headlessly from `lingtai-tui spawn`, wiring
-      `.secrets/telegram.json`, `addons`, and `mcp.telegram`, then verifying the
-      bot with token-safe checks.
+      Nested swiss-knife reference for creating and operating headless LingTai
+      bot projects from `lingtai-tui spawn`. The current helper provisions a
+      Telegram MCP bot, and the workflow also covers preset-policy replication,
+      addon wiring, secret hygiene, refresh/relaunch, and verification.
 ```
 
 ## Routing table
@@ -96,7 +96,7 @@ nested_references:
 | Produce standalone HTML reports/dashboards/memos | `reference/html-report/SKILL.md` |
 | Discover/configure Xiaomi MiMo | `reference/xiaomi-mimo/SKILL.md` |
 | Discover/configure Zhipu / Z.AI coding-plan capabilities | `reference/zhipu-coding-plan/SKILL.md` |
-| Create or automate a headless LingTai Telegram bot project | `reference/headless-telegram-bot/SKILL.md` |
+| Create or automate a headless LingTai bot project, including Telegram bots | `reference/headless-bot/SKILL.md` |
 
 ## How to use this router
 
