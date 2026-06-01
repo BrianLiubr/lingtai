@@ -71,3 +71,23 @@ func TestPopulateBundledLibrary_WebBrowsingNestedReferences(t *testing.T) {
 		}
 	}
 }
+
+// TestPopulateBundledLibrary_DailyReflectionNestedReferences verifies that the
+// embedded utility-library copier preserves daily-reflection's nested reference
+// tree on disk.
+func TestPopulateBundledLibrary_DailyReflectionNestedReferences(t *testing.T) {
+	globalDir := t.TempDir()
+	PopulateBundledLibrary("", globalDir)
+
+	utilitiesDir := filepath.Join(globalDir, "utilities", "daily-reflection")
+	for _, rel := range []string{
+		"SKILL.md",
+		"reference/data-collection/SKILL.md",
+		"reference/analysis-reporting/SKILL.md",
+		"reference/operations/SKILL.md",
+	} {
+		if _, err := os.Stat(filepath.Join(utilitiesDir, rel)); err != nil {
+			t.Fatalf("expected bundled daily-reflection file %s to be extracted: %v", rel, err)
+		}
+	}
+}
