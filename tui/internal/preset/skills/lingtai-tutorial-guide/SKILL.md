@@ -45,7 +45,7 @@ Tell the human upfront: "If you would like to jump to any lesson, just let me kn
   location: reference/communication/SKILL.md
   description: |
     Lesson 7: filesystem email, message flow, internal mail, and external
-    addon bridges such as IMAP, Telegram, Feishu, and WeChat.
+    addon bridges such as IMAP, Telegram, Feishu, and other integrations.
 - name: tutorial-guide-memory-and-molt
   location: reference/memory-and-molt/SKILL.md
   description: |
