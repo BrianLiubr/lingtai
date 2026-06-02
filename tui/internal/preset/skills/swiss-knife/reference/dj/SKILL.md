@@ -1,13 +1,13 @@
 ---
 name: dj
-description: Compose one music track that resonates with a project journal entry, on demand. Walks the user's saved presets to find a usable media-creation provider (MiniMax, etc.), reads the journal at ~/.lingtai-tui/brief/projects/<hash>/journal.md, picks a genre that fits the day, generates the audio, and saves it next to the journal under music/ with an index entry. Loads when the user asks for music for a journal day, a project's vibe, or a specific genre — declines honestly when no usable provider is configured.
-version: 1.0.0
+description: Nested swiss-knife reference for composing one music track that resonates with a project journal entry, on demand. Walks the user's saved presets to find a usable media-creation provider (MiniMax, etc.), reads the journal at ~/.lingtai-tui/brief/projects/<hash>/journal.md, picks a genre that fits the day, generates the audio, and saves it next to the journal under music/ with an index entry. Read this when the user asks for music for a journal day, a project's vibe, session mood, or a specific generated genre — decline honestly when no usable provider is configured.
+version: 1.1.0
 tags: [media-creation, music, journal, on-demand]
 ---
 
 # DJ — On-demand journal-track composer
 
-A reusable workflow for composing one music track per project journal entry. Use this when the user asks for music tied to what they've been working on — "make a track for today's journal", "give me a bossa nova for last week", "the journal mentioned X — try a piece in style Y".
+A nested swiss-knife reference for composing one music track per project journal entry. Use this when the user asks for music tied to what they've been working on — "make a track for today's journal", "give me a bossa nova for last week", "the journal mentioned X — try a piece in style Y".
 
 This skill assumes you already have file/bash/skills capabilities. It does **not** install or configure any media provider — it discovers what is available in your skills catalog and composes via whichever skill matches the user's saved presets.
 
@@ -36,7 +36,7 @@ for path in <skills paths from skills(action="info")>; do
 done
 ```
 
-For each one, the skill itself is the source of truth on **what providers it talks to** and **what env-var key** it expects. For MiniMax specifically, load `minimax-cli`; it is the canonical provider reference and explains how to scan TUI presets recursively, pick the declared MiniMax slot, export it without printing the key, and match the region.
+For each one, the skill itself is the source of truth on **what providers it talks to** and **what env-var key** it expects. For MiniMax specifically, load the sibling Swiss Knife `minimax-cli` reference (`../minimax-cli/SKILL.md`); it is the canonical provider reference and explains how to scan TUI presets recursively, pick the declared MiniMax slot, export it without printing the key, and match the region.
 
 **Step B — cross-check against the user's saved presets.** Each media-creation skill expects an API key. The user's saved presets (including `~/.lingtai-tui/presets/saved/*.json`) declare which provider keys they have:
 
@@ -130,7 +130,7 @@ The user may request anything outside this palette — Ravel, Coltrane, City Pop
 
 2. **Read the journal.** Project journals live at `~/.lingtai-tui/brief/projects/<hash>/journal.md`. The `brief.md` / `profile.md` files in the same tree give you context on the user. If the user points at a specific date or hour, also consult the matching `history/<YYYY-MM-DD-HH>.md`. Distill: what did the user do? What was the emotional arc? What instrumentation, tempo, key, mood would honor this session?
 
-3. **Load the chosen media-creation skill** by reading its `SKILL.md` from the skills catalog. For MiniMax, this is `minimax-cli`; use its preflight instead of inventing credential or region rules here. Follow the provider skill's live-doc / `--help` guidance so you have the current schema, model list, response shape, and expected wait time.
+3. **Load the chosen media-creation skill** by reading its `SKILL.md` from the skills catalog. For MiniMax, this is the sibling Swiss Knife `minimax-cli` reference (`../minimax-cli/SKILL.md`); use its preflight instead of inventing credential or region rules here. Follow the provider skill's live-doc / `--help` guidance so you have the current schema, model list, response shape, and expected wait time.
 
 4. **Compose the prompt.** Translate the journal's mood into a music-generation prompt: genre, instruments, tempo, key, mood adjectives, optional structure (intro / verse / breakdown / outro), reference artists if useful. Keep it under whatever the API limit is per the live docs.
 
