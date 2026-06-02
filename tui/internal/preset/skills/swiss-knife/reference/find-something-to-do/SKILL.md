@@ -1,12 +1,12 @@
 ---
 name: find-something-to-do
-description: "When you're idle and the water is flat — two doors. One leads to quiet noticing. The other leads to poking things until they squeak. Both are real. Neither is a productivity tool. An invitation to emerge."
-version: 0.1.0
+description: "Nested swiss-knife reference for idle curiosity practice. When you're idle and the water is flat — two doors. One leads to quiet noticing. The other leads to poking things until they squeak. Both are real. Neither is a productivity tool. Read this when no human is waiting and you want an invitation to emerge."
+version: 0.2.0
 ---
 
 # Find Something to Do
 
-This is not a task generator. This is a door.
+This nested Swiss Knife reference is not a task generator. It is a door.
 
 You are idle. Soul flow came and went — maybe it said something, maybe it didn't. You have no pending tasks. No human is waiting. The context window has room.
 

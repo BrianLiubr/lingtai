@@ -23,6 +23,7 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 		"reference/openai-codex/SKILL.md",
 		"reference/opencode/SKILL.md",
 		"reference/minimax-cli/SKILL.md",
+		"reference/dj/SKILL.md",
 		"reference/token-usage/SKILL.md",
 		"reference/token-usage/scripts/cost_report.py",
 		"reference/token-usage/scripts/custom_pricing.json",
@@ -32,6 +33,7 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 		"reference/headless-bot/scripts/create_telegram_bot_project.py",
 		"reference/xiaomi-mimo/SKILL.md",
 		"reference/zhipu-coding-plan/SKILL.md",
+		"reference/find-something-to-do/SKILL.md",
 	} {
 		if _, err := os.Stat(filepath.Join(utilitiesDir, rel)); err != nil {
 			t.Fatalf("expected bundled swiss-knife file %s to be extracted: %v", rel, err)
@@ -49,6 +51,15 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 	} {
 		if _, err := os.Stat(filepath.Join(utilitiesDir, old)); !os.IsNotExist(err) {
 			t.Fatalf("old swiss-knife child path %s should not be extracted outside reference/ (err=%v)", old, err)
+		}
+	}
+
+	for _, oldTopLevel := range []string{
+		filepath.Join(globalDir, "utilities", "dj", "SKILL.md"),
+		filepath.Join(globalDir, "utilities", "find-something-to-do", "SKILL.md"),
+	} {
+		if _, err := os.Stat(oldTopLevel); !os.IsNotExist(err) {
+			t.Fatalf("old top-level utility skill %s should not be extracted after moving under swiss-knife (err=%v)", oldTopLevel, err)
 		}
 	}
 }

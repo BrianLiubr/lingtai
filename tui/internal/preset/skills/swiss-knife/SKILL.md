@@ -4,14 +4,16 @@ description: >
   Umbrella router for small, focused CLI tools and integrations. Read this
   when a task might need one of the bundled utility references, then load only
   the nested reference that matches the need: claude-code, openai-codex, or
-  opencode for coding CLIs; minimax-cli for MiniMax media/TTS/vision; token-usage
-  for token/cost reports; html-report for standalone browser deliverables;
-  xiaomi-mimo for Xiaomi MiMo provider discovery; zhipu-coding-plan for Z.AI /
-  BigModel coding-plan capabilities; headless-bot for provisioning fresh
-  LingTai bot projects such as Telegram bots from `lingtai-tui spawn`. This
+  opencode for coding CLIs; minimax-cli for MiniMax media/TTS/vision; dj for
+  journal-inspired music generation; token-usage for token/cost reports;
+  html-report for standalone browser deliverables; xiaomi-mimo for Xiaomi MiMo
+  provider discovery; zhipu-coding-plan for Z.AI / BigModel coding-plan
+  capabilities; headless-bot for provisioning fresh LingTai bot projects such as
+  Telegram bots from `lingtai-tui spawn`; find-something-to-do for idle
+  curiosity practice. This
   parent is the route map; each nested reference is self-contained under
   `reference/<name>/SKILL.md`.
-version: 2.0.1
+version: 2.1.0
 tags: [utilities, umbrella, toolkit, nested-skill]
 ---
 
@@ -51,6 +53,12 @@ nested_references:
     description: >
       Nested swiss-knife reference for the MiniMax `mmx` CLI. Read this for
       MiniMax-backed image, video, music, TTS, or ad-hoc shell vision tasks.
+  - name: dj
+    location: reference/dj/SKILL.md
+    description: >
+      Nested swiss-knife reference for composing one music track from a project
+      journal entry. Read this when the human asks for music for a journal day,
+      project vibe, session mood, or a specific generated genre.
   - name: token-usage
     location: reference/token-usage/SKILL.md
     description: >
@@ -82,6 +90,12 @@ nested_references:
       bot projects from `lingtai-tui spawn`. The current helper provisions a
       Telegram MCP bot, and the workflow also covers preset-policy replication,
       addon wiring, secret hygiene, refresh/relaunch, and verification.
+  - name: find-something-to-do
+    location: reference/find-something-to-do/SKILL.md
+    description: >
+      Nested swiss-knife reference for idle curiosity practice. Read this when
+      you have no pending task, no human waiting, and want a reflective way to
+      notice quiet impulses or choose a small autonomous exploration.
 ```
 
 ## Routing table
@@ -92,11 +106,13 @@ nested_references:
 | Use or compare OpenAI Codex CLI | `reference/openai-codex/SKILL.md` |
 | Use or compare OpenCode CLI | `reference/opencode/SKILL.md` |
 | Generate images, video, music, TTS, or MiniMax shell vision | `reference/minimax-cli/SKILL.md` |
+| Compose music from a project journal, session mood, or requested genre | `reference/dj/SKILL.md` |
 | Report token usage or model costs | `reference/token-usage/SKILL.md` |
 | Produce standalone HTML reports/dashboards/memos | `reference/html-report/SKILL.md` |
 | Discover/configure Xiaomi MiMo | `reference/xiaomi-mimo/SKILL.md` |
 | Discover/configure Zhipu / Z.AI coding-plan capabilities | `reference/zhipu-coding-plan/SKILL.md` |
 | Create or automate a headless LingTai bot project, including Telegram bots | `reference/headless-bot/SKILL.md` |
+| Practice idle curiosity when there is no pending task or human waiting | `reference/find-something-to-do/SKILL.md` |
 
 ## How to use this router
 
@@ -128,7 +144,8 @@ polluting working context with unrelated utility manuals.
 
 - **Router first** — Swiss Knife itself exposes `swiss-knife/SKILL.md` as its
   top-level catalog entry; its bundled references are reached through that router
-  rather than promoted as sibling `swiss-knife/<child>` skills.
+  rather than promoted as sibling top-level utility skills or `swiss-knife/<child>`
+  skills.
 - **Self-contained children** — each nested reference carries its own examples,
   scripts, and assets.
 - **Single-purpose children** — if a nested utility grows into a broadly useful

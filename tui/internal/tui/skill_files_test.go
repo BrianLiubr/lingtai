@@ -95,10 +95,12 @@ func TestBuildSkillFolderEntries_SwissKnifeNestedReferences(t *testing.T) {
 		"reference/openai-codex/SKILL.md",
 		"reference/opencode/SKILL.md",
 		"reference/minimax-cli/SKILL.md",
+		"reference/dj/SKILL.md",
 		"reference/token-usage/SKILL.md",
 		"reference/html-report/SKILL.md",
 		"reference/xiaomi-mimo/SKILL.md",
 		"reference/zhipu-coding-plan/SKILL.md",
+		"reference/find-something-to-do/SKILL.md",
 	} {
 		if !strings.Contains(rootBody, want) {
 			t.Errorf("swiss-knife root missing %q", want)
@@ -115,6 +117,8 @@ func TestBuildSkillFolderEntries_SwissKnifeNestedReferences(t *testing.T) {
 		"opencode/SKILL.md",
 		"html-report/SKILL.md",
 		"html-report/assets/template.html",
+		"dj/SKILL.md",
+		"find-something-to-do/SKILL.md",
 		"token-usage/SKILL.md",
 		"token-usage/scripts/cost_report.py",
 	} {
@@ -133,6 +137,22 @@ func TestBuildSkillFolderEntries_SwissKnifeNestedReferences(t *testing.T) {
 	}
 	if !strings.Contains(string(childBodyBytes), "Nested swiss-knife reference for Claude Code CLI") {
 		t.Error("nested claude-code child should identify itself as a nested swiss-knife reference for Claude Code CLI")
+	}
+
+	djBodyBytes, err := os.ReadFile(filepath.Join(skillDir, "reference", "dj", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(djBodyBytes), "Nested swiss-knife reference for composing one music track") {
+		t.Error("nested dj child should identify itself as a nested swiss-knife reference")
+	}
+
+	findBodyBytes, err := os.ReadFile(filepath.Join(skillDir, "reference", "find-something-to-do", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(findBodyBytes), "Nested swiss-knife reference for idle curiosity practice") {
+		t.Error("nested find-something-to-do child should identify itself as a nested swiss-knife reference")
 	}
 }
 
