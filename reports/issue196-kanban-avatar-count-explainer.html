@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue #196 — Kanban detail view counted avatars as Daemons</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --border: #2a2f3a;
+    --ink: #e6e9ef; --muted: #9aa3b2; --accent: #6ea8fe;
+    --bad: #ff6b6b; --good: #4ec9b0; --code-bg: #11141b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.8rem; line-height: 1.25; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 1.25rem; margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.88rem; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+  .tag { display: inline-block; font-size: 0.72rem; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
+  .tag.bad { background: rgba(255,107,107,.14); color: var(--bad); border: 1px solid rgba(255,107,107,.4); }
+  .tag.good { background: rgba(78,201,176,.14); color: var(--good); border: 1px solid rgba(78,201,176,.4); }
+  .del { color: var(--bad); }
+  .add { color: var(--good); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+  ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  .kbd { background: #222732; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; font-size: 0.82rem; }
+  .meta { color: var(--muted); font-size: 0.86rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Kanban detail view counted avatar/delegate entries as <em>Daemons</em></h1>
+  <p class="sub">LingTai issue <strong>#196</strong> · fix <code>fix(tui): label kanban delegate count as avatars</code></p>
+
+  <div class="panel">
+    <strong>One-line summary:</strong> The <span class="kbd">Ctrl+D</span> detail view in <code>/kanban</code>
+    read <code>delegates/ledger.jsonl</code> — which is the <em>avatar/delegate spawn</em> ledger — and
+    counted every non-empty line as a "Daemon". The section is now labelled <strong>Avatars</strong>
+    and counts only genuine avatar spawn records.
+  </div>
+
+  <h2>The bug <span class="tag bad">before</span></h2>
+  <p>
+    In the agent properties view, pressing <span class="kbd">Ctrl+D</span> opens a per-agent detail
+    breakdown. One section reported a <em>Daemons</em> count. But the data source it read,
+    <code>delegates/ledger.jsonl</code>, is the avatar topology ledger used elsewhere in the same
+    codebase by <code>fs.ReadLedger</code> to build the network graph. Its records look like:
+  </p>
+  <pre>{"event":"avatar","name":"gemini-fixer","working_dir":"gemini-fixer","ts":1718000000}</pre>
+
+  <p>The old counting code in <code>tui/internal/tui/props.go</code> counted <em>every</em> non-empty line:</p>
+  <pre><span class="del">// Daemon spawn count from delegates/ledger.jsonl.
+m.detailDaemonCount = 0
+if data, err := os.ReadFile(filepath.Join(m.selectedDir, "delegates", "ledger.jsonl")); err == nil {
+    for _, line := range strings.Split(string(data), "\n") {
+        if strings.TrimSpace(line) != "" {
+            m.detailDaemonCount++   // counts ANY line, incl. non-avatar events
+        }
+    }
+}</span></pre>
+
+  <p>
+    Two problems compound: the <strong>label</strong> was wrong (avatar data shown as daemons), and the
+    <strong>count</strong> was loose (any non-empty line, not just <code>event == "avatar"</code> records).
+  </p>
+
+  <h2>Impact</h2>
+  <ul>
+    <li>An agent with many <strong>avatars</strong> and <strong>zero daemons</strong> appeared to have many daemons.</li>
+    <li>The Kanban detail view misrepresented network topology and work distribution.</li>
+    <li>Any future non-avatar event line in the ledger would have inflated the number further.</li>
+  </ul>
+
+  <h2>The fix <span class="tag good">after</span></h2>
+  <p>
+    The smallest correct change: stop pretending this is daemon data. Relabel the section to
+    <strong>Avatars</strong> and reuse the canonical ledger reader so the count matches the
+    rest of the app's avatar topology — only <code>event == "avatar"</code> records are counted.
+  </p>
+  <pre><span class="add">// Avatar spawn count from delegates/ledger.jsonl. This ledger is the
+// avatar/delegate spawn ledger (records with event == "avatar"), not a
+// daemon run ledger — reuse the canonical reader so the count matches
+// the network topology (see issue #196).
+avatarEdges, _ := fs.ReadLedger(m.selectedDir)
+m.detailAvatarCount = len(avatarEdges)</span></pre>
+
+  <p>
+    <code>fs.ReadLedger</code> already filters to <code>event == "avatar"</code> records with a non-empty
+    <code>working_dir</code>, returning one edge per spawned avatar. Using <code>len(edges)</code> gives
+    an exact, schema-aware count and removes a duplicate hand-rolled parser (the now-unused
+    <code>os</code> import was dropped).
+  </p>
+
+  <h2>What changed</h2>
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>tui/internal/tui/props.go</code></td><td>Field <code>detailDaemonCount</code> → <code>detailAvatarCount</code>; count via <code>fs.ReadLedger</code>; i18n keys updated; dropped unused <code>os</code> import.</td></tr>
+      <tr><td><code>tui/i18n/en.json</code></td><td><code>detail_daemons</code> "Daemons" → <code>detail_avatars</code> "Avatars".</td></tr>
+      <tr><td><code>tui/i18n/zh.json</code></td><td>神识 → 分身 (avatar, the established LingTai term).</td></tr>
+      <tr><td><code>tui/i18n/wen.json</code></td><td>神识 → 分身.</td></tr>
+      <tr><td><code>tui/internal/tui/props_detail_test.go</code></td><td>New focused regression tests.</td></tr>
+    </tbody>
+  </table>
+  <p class="meta">
+    Terminology note: in LingTai, <strong>avatar = 分身</strong> (full independent sub-agents) and
+    <strong>daemon = 神识</strong> (short-lived parallel workers). The ledger records avatars, so the
+    Chinese label moves from 神识 to 分身 to match.
+  </p>
+
+  <h2>Tests</h2>
+  <p>New regression tests in <code>props_detail_test.go</code> drive <code>loadDetail()</code> against a fixture ledger:</p>
+  <ul>
+    <li><code>TestLoadDetailCountsOnlyAvatarSpawns</code> — a ledger with two <code>avatar</code> records interleaved
+        with a <code>heartbeat</code> event and a blank line yields a count of <strong>2</strong> (the loose
+        line-counter would have returned 3).</li>
+    <li><code>TestLoadDetailNoLedger</code> — a missing ledger yields <strong>0</strong> with no error.</li>
+  </ul>
+
+  <h2>Validation</h2>
+  <pre>go test ./internal/tui/ ./internal/fs/ ./i18n/   → ok (all pass)
+go vet  ./internal/tui/ ./internal/fs/ ./i18n/   → clean
+go build ./...                                   → clean
+git diff --check                                 → clean</pre>
+
+  <p class="meta">Generated for LingTai issue #196.</p>
+</div>
+</body>
+</html>

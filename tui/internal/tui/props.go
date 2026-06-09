@@ -3,7 +3,6 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,12 +47,12 @@ type PropsModel struct {
 	pickerIdx  int
 
 	// Detail view: full-screen single-column breakdown of token usage
-	// by provider, recent activity, MCP servers, daemon count. Toggled
-	// with Ctrl+D. Esc closes detail and returns to the summary.
+	// by provider, recent activity, MCP servers, avatar spawn count.
+	// Toggled with Ctrl+D. Esc closes detail and returns to the summary.
 	detailOpen        bool
 	detailByProvider  map[string]fs.TokenTotals
 	detailRecent      []fs.LedgerEntry
-	detailDaemonCount int
+	detailAvatarCount int
 	detailMCPNames    []string
 }
 
@@ -221,15 +220,12 @@ func (m *PropsModel) loadDetail() {
 		}
 	}
 
-	// Daemon spawn count from delegates/ledger.jsonl.
-	m.detailDaemonCount = 0
-	if data, err := os.ReadFile(filepath.Join(m.selectedDir, "delegates", "ledger.jsonl")); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.TrimSpace(line) != "" {
-				m.detailDaemonCount++
-			}
-		}
-	}
+	// Avatar spawn count from delegates/ledger.jsonl. This ledger is the
+	// avatar/delegate spawn ledger (records with event == "avatar"), not a
+	// daemon run ledger — reuse the canonical reader so the count matches
+	// the network topology (see issue #196).
+	avatarEdges, _ := fs.ReadLedger(m.selectedDir)
+	m.detailAvatarCount = len(avatarEdges)
 }
 
 // syncViewportContent re-renders left+right panels into the viewport.
@@ -833,12 +829,12 @@ func (m PropsModel) renderDetail() string {
 		lines = append(lines, "")
 	}
 
-	// Daemon spawn count.
-	if m.detailDaemonCount > 0 {
-		lines = append(lines, "  "+sectionStyle.Render(i18n.T("props.detail_daemons")))
+	// Avatar spawn count.
+	if m.detailAvatarCount > 0 {
+		lines = append(lines, "  "+sectionStyle.Render(i18n.T("props.detail_avatars")))
 		lines = append(lines, "")
-		lines = append(lines, "    "+labelStyle.Render(i18n.T("props.detail_daemons_total")+": ")+
-			valueStyle.Render(fmt.Sprintf("%d", m.detailDaemonCount)))
+		lines = append(lines, "    "+labelStyle.Render(i18n.T("props.detail_avatars_total")+": ")+
+			valueStyle.Render(fmt.Sprintf("%d", m.detailAvatarCount)))
 		lines = append(lines, "")
 	}
 
