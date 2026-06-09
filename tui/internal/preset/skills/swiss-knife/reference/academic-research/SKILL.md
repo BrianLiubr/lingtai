@@ -71,9 +71,22 @@ rejects placeholder emails with HTTP 422. The default falls back to
 Read on only if: the script fails on your paper, you need a custom query shape,
 or you're composing a multi-step workflow (search → fetch → cite → write).
 
+## Before drafting citation-bearing academic writing
+
+> **Verify sources before you write prose.** If you are about to draft a paper,
+> related-work section, literature review, References list, or any author–year /
+> citation-bearing manuscript, pass the **evidence-verification gate first**:
+> [reference/evidence-verification-gate.md](reference/evidence-verification-gate.md).
+> No verified evidence → no confident prose. Peer-reviewed and preprint sources
+> must not share the same evidence layer; search results are leads, not citations.
+> If the user asks to "go fast," reduce *scope*, not *verification*. Produce a
+> verified literature matrix **before** any submission-like draft.
+
 ## Escape hatch — quick paths
 
 ```
+I'm about to write a paper / references / related-work section → reference/evidence-verification-gate.md (verify FIRST)
+The user wants a "fast" / "readable" paper draft → reference/evidence-verification-gate.md (reduce scope, not verification)
 I have a DOI                → reference/api-doi-resolver.md → api-crossref.md
 I have an arXiv ID          → reference/api-arxiv.md (direct PDF link)
 I have a PMID               → reference/api-europe-pmc.md
@@ -125,6 +138,7 @@ Each card includes endpoint parameters, runnable code, response shape, rate limi
 
 ### Standalone references
 
+- [evidence-verification-gate.md](reference/evidence-verification-gate.md) — **verify-before-drafting gate** for citation-bearing academic writing: detection triggers, the verified-literature-matrix schema, A/B/C evidence tiers, "go fast = reduce scope not verification," matrix-before-draft artifact convention, pre-draft lint
 - [publisher-page-extraction.md](reference/publisher-page-extraction.md) — Tier-5 manual escape hatch (Nature/APS/AIP/IOP/Cambridge → structured Markdown)
 - [libgen-fallback.md](reference/libgen-fallback.md) — Last-resort PDF source with legal/safety notes
 - [error-handling.md](reference/error-handling.md) — 429 backoff, 403 publisher blocks, timeout patterns
@@ -146,6 +160,7 @@ Each card includes endpoint parameters, runnable code, response shape, rate limi
 - **Library Genesis legality varies by jurisdiction** — use is the user's responsibility. Pass `--no-libgen` to opt out.
 - **Publisher-page extraction (Tier 5) is an in-house, self-contained extractor** — stdlib + `requests`, no third-party dependency and nothing to install (replaces the old broken `zhiping0913/Download_paper` path, issue #136). It fetches the already-accessible official article / DOI landing page and parses `citation_*` metadata + the article body into structured Markdown with a provenance/limitations footer. It performs **no paywall/CAPTCHA bypass and no cookie/credential handling** — official pages only. A login/paywall interstitial, an unsupported DOI prefix, or a page with too little readable text is a clean miss, and the ladder falls through. Skip the tier with `--no-publisher-extract`. The extraction is heuristic (equations/figures/tables may be lost), so treat the artifact as a convenience copy, not a typeset full text. See [reference/publisher-page-extraction.md](reference/publisher-page-extraction.md).
 - **Authorized-publisher tier (5b) only uses access you already have** — it follows the official DOI landing page and grabs a same-host publisher PDF, validating `%PDF-` bytes and Content-Type before saving. It never bypasses paywalls/CAPTCHAs and never reads, stores, or replays cookies/credentials; most institutional access is IP-based, so on a licensed network a plain HTTP GET may work. Off-network it harmlessly misses. Pass `--no-institutional` to disable in legal-sensitive environments. Cookies/auth headers are never written to provenance. See [reference/authorized-publisher-access.md](reference/authorized-publisher-access.md).
+- **Drafting citation-bearing academic writing without verifying sources first** — under "fast"/"readable draft" pressure the model flattens DOI-verified papers, preprints, and search leads into one confident evidence layer, which reads as submission-ready and invites reviewer rejection. Pass the [evidence-verification gate](reference/evidence-verification-gate.md) before drafting: verify a literature matrix first, keep A/B/C reliability tiers separate in the prose, and reduce scope (not verification) when speed is requested.
 - **Writing an empirical paper iteratively can drift from the data** — reviewer rounds make prose more polished and internally consistent without verifying it still matches the experiments on disk. Reviewer agreement is text-consistency evidence, not data-correspondence evidence. Anchor every claim to data files/runner code *before* writing, and re-derive (don't just rewrite) when feedback flags confusion. See [reference/anti-pattern-text-consistency-vs-data-correspondence.md](reference/anti-pattern-text-consistency-vs-data-correspondence.md).
 
 ---

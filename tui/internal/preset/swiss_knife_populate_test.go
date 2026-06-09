@@ -34,6 +34,7 @@ func TestPopulateBundledLibrary_SwissKnifeNestedReferences(t *testing.T) {
 		"reference/academic-research/reference/api-arxiv.md",
 		"reference/academic-research/reference/pipeline-latex-writing.md",
 		"reference/academic-research/reference/anti-pattern-text-consistency-vs-data-correspondence.md",
+		"reference/academic-research/reference/evidence-verification-gate.md",
 		"reference/dj/SKILL.md",
 		"reference/token-usage/SKILL.md",
 		"reference/token-usage/scripts/cost_report.py",

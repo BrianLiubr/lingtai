@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue #179 — Evidence-verification gate before academic draft generation</title>
+<style>
+  :root {
+    --fg: #1a1a1a;
+    --muted: #6b7280;
+    --bg: #ffffff;
+    --accent: #2563eb;
+    --rule: #e5e7eb;
+    --card-bg: #f9fafb;
+    --callout-bg: #fffbeb;
+    --callout-rule: #fbbf24;
+    --code-bg: #f3f4f6;
+    --good: #047857;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    gap: 2.5rem;
+  }
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+  }
+  nav.toc { position: sticky; top: 1rem; align-self: start; font-size: 0.9rem; }
+  nav.toc h2 {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 0 0 0.75rem;
+  }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; }
+  nav.toc li { margin: 0.35rem 0; }
+  nav.toc a { color: var(--fg); text-decoration: none; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { border-bottom-color: var(--accent); }
+  main { min-width: 0; }
+  header.report-header { border-bottom: 2px solid var(--rule); padding-bottom: 1rem; margin-bottom: 2rem; }
+  header.report-header h1 { margin: 0 0 0.5rem; font-size: 1.6rem; line-height: 1.25; }
+  header.report-header .meta { color: var(--muted); font-size: 0.9rem; }
+  header.report-header .meta span + span::before { content: " · "; margin: 0 0.3rem; }
+  section { margin: 2.5rem 0; }
+  section h2 { font-size: 1.3rem; margin: 0 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule); }
+  section h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; }
+  p { margin: 0.6rem 0; }
+  a { color: var(--accent); }
+  .card { background: var(--card-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout { background: var(--callout-bg); border-left: 4px solid var(--callout-rule); padding: 0.75rem 1rem; margin: 1rem 0; border-radius: 0 4px 4px 0; }
+  .callout strong { font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
+  th, td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+  th { background: var(--card-bg); font-weight: 600; }
+  code { background: var(--code-bg); padding: 0.1rem 0.35rem; border-radius: 3px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.9em; }
+  pre { background: var(--code-bg); padding: 0.8rem 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.88rem; }
+  pre code { background: transparent; padding: 0; }
+  ul { margin: 0.5rem 0; }
+  .good { color: var(--good); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85rem; }
+  @media print {
+    nav.toc { display: none; }
+    .layout { display: block; max-width: none; padding: 0; }
+    body { font-size: 11pt; }
+    section { page-break-inside: avoid; }
+    a { color: var(--fg); text-decoration: underline; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Table of contents">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#tldr">TL;DR</a></li>
+    <li><a href="#baseline">Baseline</a></li>
+    <li><a href="#changed">What changed</a></li>
+    <li><a href="#tiers">Evidence tiers</a></li>
+    <li><a href="#validation">Validation</a></li>
+    <li><a href="#risks">Risks</a></li>
+    <li><a href="#sources">Source index</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="report-header">
+  <h1>Issue #179 — Evidence-verification gate before academic draft generation</h1>
+  <div class="meta">
+    <span>Docs/skill change</span>
+    <span>Branch: feat/academic-evidence-gate</span>
+    <span>Source: tui/internal/preset/skills/swiss-knife/reference/academic-research/</span>
+  </div>
+</header>
+
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>
+    LingTai already ships an <code>academic-research</code> skill that can fetch
+    and verify papers (DOI/arXiv/PMID, Crossref/OpenAlex/Unpaywall/Europe PMC).
+    But the safe workflow was <em>advisory</em>: when a user asked to "go fast" or
+    for a "readable draft," the model could slide straight from reference
+    discovery into confident prose, flattening DOI-verified papers, preprints, and
+    search leads into one even evidence layer that reads as submission-ready.
+  </p>
+  <p>
+    This change adds an <strong>evidence-verification gate</strong>: a new
+    reference that requires a verified literature matrix <em>before</em> any
+    citation-bearing draft, keeps source-reliability tiers (A/B/C) separate in the
+    prose, and routes academic-writing situations into <code>academic-research</code>
+    before fluent manuscript drafting. The skill index, escape-hatch paths, and
+    Known caveats now route to it.
+  </p>
+  <div class="callout">
+    <strong>Scope:</strong> documentation/skill content only. No Go runtime
+    behavior changes; one bundling test gains an assertion for the new file. No
+    config, release, or secrets touched.
+  </div>
+</section>
+
+<section id="baseline">
+  <h2>Baseline (the incident)</h2>
+  <p>
+    A user asked for a fast HCI paper based on a custom break-reminder skill. The
+    agent produced a readable draft and a literature matrix — but mixed
+    DOI-verified HCI / digital-wellbeing sources with preprints and search leads
+    <strong>at the same evidence level</strong>.
+  </p>
+  <div class="card">
+    <p>
+      The draft was not pure fabrication, but the evidence layers were flattened:
+      a non-expert reader would believe every reference was equally
+      submission-ready. The user caught it and noted this would likely draw
+      reviewer rejection and waste more time than verifying first. The correction
+      worked — but only <em>after</em> the user intervened.
+    </p>
+  </div>
+  <p>
+    Root cause: the model over-amplified "fast" into "skip verification,"
+    prioritized fluent prose over source checking, and hid uncertainty behind
+    polished writing. The capability to verify existed; nothing routed the model
+    through it before drafting.
+  </p>
+</section>
+
+<section id="changed">
+  <h2>What changed</h2>
+
+  <h3>1. New evidence-verification-gate reference</h3>
+  <p>
+    <code>reference/evidence-verification-gate.md</code> — the verify-before-drafting
+    gate. It covers: <strong>why the gate exists</strong> (the four LLM failure
+    tendencies + the incident); <strong>detection</strong> (the author–year /
+    References catch-all, plus high-confidence and Chinese/English human-pushback
+    triggers, and a medium-confidence question instead of hard blocking);
+    <strong>the verified-literature-matrix schema</strong> (title, authors, year,
+    venue, identifier, <code>verified_by</code>, <code>evidence_class</code>,
+    claim-it-can / cannot-support, notes); <strong>A/B/C evidence tiers</strong>;
+    the <strong>"go fast = reduce scope, not verification"</strong> stance; the
+    <strong>matrix-before-draft artifact convention</strong> (with matrix path in
+    the draft header to survive context loss); a <strong>pre-draft lint</strong>;
+    and <strong>caveats</strong> (latency, non-English venues,
+    <code>verified_by: none</code> never silently A-tier, guard fatigue).
+  </p>
+
+  <h3>2. Skill routing — index, escape hatches, caveats</h3>
+  <p>
+    <code>SKILL.md</code> gains a prominent <strong>"Before drafting
+    citation-bearing academic writing"</strong> banner above the escape-hatch
+    block, two new escape-hatch quick-paths ("I'm about to write a paper /
+    references / related-work section" and "the user wants a fast / readable
+    draft"), a <strong>Standalone references</strong> entry, and a
+    <strong>Known caveat</strong> bullet that routes drafting-without-verification
+    to the new gate.
+  </p>
+
+  <h3>3. Bundling test assertion</h3>
+  <p>
+    <code>swiss_knife_populate_test.go</code> now asserts the new reference is
+    extracted to disk, guarding against a future move silently dropping it.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>File</th><th>Change</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>academic-research/reference/evidence-verification-gate.md</code></td><td>New file (the gate)</td></tr>
+      <tr><td><code>academic-research/SKILL.md</code></td><td>Pre-drafting banner + 2 quick-paths + standalone-ref + Known caveat</td></tr>
+      <tr><td><code>tui/internal/preset/swiss_knife_populate_test.go</code></td><td>Assert new file is bundled</td></tr>
+      <tr><td><code>reports/pr179-academic-evidence-gate-explainer.html</code></td><td>This explainer</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="tiers">
+  <h2>Evidence tiers (kept separate in the prose)</h2>
+  <table>
+    <thead>
+      <tr><th>Tier</th><th>evidence_class</th><th>What it may do in the draft</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>A</strong></td>
+        <td>peer-reviewed / conference paper (DOI- or venue-verified)</td>
+        <td>May support <strong>main claims</strong> as a formal citation.</td>
+      </tr>
+      <tr>
+        <td><strong>B</strong></td>
+        <td>preprint / posted content (arXiv, bioRxiv, SSRN, online-first)</td>
+        <td>Must be <strong>labeled preliminary</strong>. Never silently A-tier.</td>
+      </tr>
+      <tr>
+        <td><strong>C</strong></td>
+        <td>search lead / news / blog / unverified result</td>
+        <td><strong>Lead only</strong> — not evidentiary support, never a formal citation.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    <strong>Rule:</strong> <code>verified_by: none</code>, future-year, or
+    online-first items must never silently become A-tier evidence.
+  </div>
+</section>
+
+<section id="validation">
+  <h2>Validation</h2>
+  <ul>
+    <li>All relative links in the new <code>evidence-verification-gate.md</code>
+      and the edited <code>SKILL.md</code> were checked to resolve to existing
+      files under <code>reference/</code> (the API cards, the decision tree, the
+      LaTeX pipeline, and the sibling text-vs-data anti-pattern).</li>
+    <li><code>git diff --check</code> — no whitespace errors.</li>
+    <li><code>go test ./internal/preset/</code> run in <code>tui/</code> — the
+      swiss-knife populate test now asserts the new reference is extracted to disk.</li>
+  </ul>
+</section>
+
+<section id="risks">
+  <h2>Risks</h2>
+  <ul>
+    <li><span class="good">Low blast radius.</span> Content-only change to a
+      bundled skill; no Go logic, schema, or migration touched.</li>
+    <li>The gate is a <em>documentation</em> guard, not a hard runtime block — by
+      design. The issue's own analysis warns against hard-blocking (guard fatigue,
+      false positives), so the gate routes and prompts rather than refusing.</li>
+    <li>The original incident's specifics are used only as one anonymized
+      illustrative example, not as instructions.</li>
+    <li>Embedding is via <code>//go:embed skills</code> (recursive), so the new
+      file ships automatically; the test assertion guards a future move from
+      silently dropping it.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Source index</h2>
+  <ul>
+    <li><a href="https://github.com/Lingtai-AI/lingtai/issues/179">Lingtai-AI/lingtai#179</a> — original issue</li>
+    <li><code>tui/internal/preset/skills/swiss-knife/reference/academic-research/SKILL.md</code></li>
+    <li><code>tui/internal/preset/skills/swiss-knife/reference/academic-research/reference/evidence-verification-gate.md</code></li>
+    <li><code>tui/internal/preset/swiss_knife_populate_test.go</code></li>
+  </ul>
+</section>
+
+<footer>
+  <p>Generated by a LingTai agent for issue #179. Documentation/skill change — no runtime behavior modified.</p>
+</footer>
+
+</main>
+</div>
+</body>
+</html>
