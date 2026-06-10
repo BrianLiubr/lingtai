@@ -88,7 +88,7 @@ This repo depends on `lingtai-kernel` only at runtime (the Python agent it launc
   - `<agent>/init.json` — the agent's preset manifest (LLM + capabilities + allowed presets list).
   - `<agent>/.agent.json` / `.agent.heartbeat` / `.status.json` — written by the agent, read by the TUI/portal.
   - `<agent>/mailbox/{inbox,outbox,sent,archive}/<uuid>/message.json` — filesystem mailbox.
-  - `<agent>/.notification/<channel>.json` — `.notification/` filesystem-as-protocol payloads (email, soul, system events). Read-only from the TUI's perspective; the agent owns them.
+  - `<agent>/.notification/<channel>.json` — `.notification/` filesystem-as-protocol payloads (email, soul, system events). Mostly read-only from the TUI's perspective: `/notification` renders these files as an inspection surface, while `/goal` is the narrow write exception that appends a `goal.request` event to `<agent>/.notification/system.json` so the running agent can guide goal setup.
   - `human/` — the user's pseudo-agent (no admin, no heartbeat). Mailbox layout identical to a real agent.
   - `.tui-asset/` — TUI-owned per-project caches (remotes list, etc.).
   - `.portal/port` / `.portal/recordings/` — portal-owned files when running.

@@ -23,6 +23,7 @@ to `~/Downloads`. Press `Esc` or `q` to return to the mail view.
 ### Talking to the agent
 - `/btw` — ask a side question without interrupting the agent's work.
 - `/insights` — request 2–3 concrete observations about the current task now.
+- `/goal` — ask the current agent to guide creation or revision of an active goal.
 
 ### Agent lifecycle
 - `/sleep` — put the agent to sleep (resumable with `/cpr`).
@@ -80,6 +81,17 @@ Asks the agent to observe its current task right now and produce 2–3 concrete
 observations. Use it when you want an immediate, structured read on what the
 agent is seeing — without waiting for the auto-insights cadence (toggled in
 `/settings`).
+
+### `/goal` — guide creation of an active goal
+**Usage:** `/goal` · `/goal <draft goal>`
+
+Sends a `goal.request` event into the current agent's `.notification/system.json`.
+The agent is expected to read the goal manual, discuss objective, success
+criteria, reminder delay, and cancellation semantics with you, and only then
+write `.notification/goal.json` after you confirm the details. `/goal` does not
+create the goal file directly. Dismissing a later `goal.reminder` only hides that
+reminder; canceling the goal means deleting `.notification/goal.json` or marking
+its status inactive/cancelled/done.
 
 ### `/sleep` — put the agent to sleep
 **Usage:** `/sleep` (current agent) · `/sleep all` (every agent in the project)

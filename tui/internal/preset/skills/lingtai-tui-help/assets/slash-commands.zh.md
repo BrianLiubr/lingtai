@@ -19,6 +19,7 @@
 ### 与智能体对话
 - `/btw` — 提一个旁问，不打断智能体当前的工作。
 - `/insights` — 立即索取关于当前任务的 2–3 条具体观察。
+- `/goal` — 让当前 Agent 引导创建或修订一个 active goal。
 
 ### 智能体生命周期
 - `/sleep` — 让智能体休眠（可用 `/cpr` 唤醒）。
@@ -71,6 +72,15 @@
 
 让智能体立刻观察当前任务并给出 2–3 条具体观察。当你想立即、结构化地了解智能体所见，
 而不愿等待自动洞察节奏（在 `/settings` 中开关）时使用。
+
+### `/goal` — 引导创建 active goal
+**用法：** `/goal` · `/goal <目标草稿>`
+
+向当前 Agent 的 `.notification/system.json` 投递一个 `goal.request` 事件。
+Agent 应读取 goal manual，和你一起明确 objective、success criteria、reminder
+delay 与取消语义，并且只在你确认细节后才写入 `.notification/goal.json`。`/goal`
+本身不会直接创建 goal 文件。之后 dismiss `goal.reminder` 只会隐藏那条提醒；真正取消
+goal 需要删除 `.notification/goal.json`，或把其中 status 标为 inactive/cancelled/done。
 
 ### `/sleep` — 让智能体休眠
 **用法：** `/sleep`（当前智能体）· `/sleep all`（项目内全部智能体）

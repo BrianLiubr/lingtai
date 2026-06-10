@@ -603,5 +603,10 @@
   "daemons.started": "开始",
   "daemons.updated": "更新",
   "daemons.completed": "完成",
-  "daemons.error": "错误"
+  "daemons.error": "错误",
+  "mail.goal_sent": "已发送 goal 引导通知（%s）。Agent 会阅读 goal manual 并引导创建目标。",
+  "mail.goal_failed": "发送 goal 引导通知失败：%s",
+  "mail.goal_no_agent": "当前没有选中的 Agent，无法发送 goal 引导通知。",
+  "palette.goal": "引导创建 goal",
+  "cmd.goal": "Goal 引导——发送 system notification，让当前 Agent 阅读 goal manual，引导人类明确 objective / criteria / reminder / 取消语义，并只在确认后创建 .notification/goal.json"
 }

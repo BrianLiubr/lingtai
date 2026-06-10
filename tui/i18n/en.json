@@ -603,5 +603,10 @@
   "daemons.started": "started",
   "daemons.updated": "updated",
   "daemons.completed": "completed",
-  "daemons.error": "error"
+  "daemons.error": "error",
+  "mail.goal_sent": "Goal request notification sent (%s). The agent will read the goal manual and guide goal creation.",
+  "mail.goal_failed": "Failed to send goal request notification: %s",
+  "mail.goal_no_agent": "No current agent is selected; cannot send a goal request.",
+  "palette.goal": "Guide goal creation",
+  "cmd.goal": "Goal guide — send a system notification asking the current agent to read the goal manual, guide the human through objective/criteria/reminder/cancellation semantics, and only create .notification/goal.json after confirmation"
 }

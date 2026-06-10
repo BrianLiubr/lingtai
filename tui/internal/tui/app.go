@@ -745,6 +745,22 @@ func (a App) handlePaletteCommand(command, args string) (tea.Model, tea.Cmd) {
 		a.currentView = appViewNotification
 		a.notification = NewNotificationModel(a.orchDir)
 		return a, tea.Batch(a.notification.Init(), a.sendSize())
+	case "goal":
+		if targetDir == "" {
+			addMsg(i18n.T("mail.goal_no_agent"))
+			return a, nil
+		}
+		if !fs.IsAlive(targetDir, 3.0) {
+			addMsg(i18n.T("mail.btw_suspended"))
+			return a, nil
+		}
+		eventID, err := writeGoalRequestNotification(targetDir, args, time.Now())
+		if err != nil {
+			addMsg(i18n.TF("mail.goal_failed", firstLine(err)))
+			return a, nil
+		}
+		addMsg(i18n.TF("mail.goal_sent", eventID))
+		return a, nil
 	case "skills":
 		a.currentView = appViewLibrary
 		// Agent-scoped: mirror what the skills capability would inject for

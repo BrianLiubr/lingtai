@@ -603,5 +603,10 @@
   "daemons.started": "始",
   "daemons.updated": "更",
   "daemons.completed": "毕",
-  "daemons.error": "误"
+  "daemons.error": "误",
+  "mail.goal_sent": "设愿之讯已遣（%s）。器灵将读 goal manual 而导人成愿。",
+  "mail.goal_failed": "设愿之讯遣败：%s",
+  "mail.goal_no_agent": "今无所择器灵，不可遣设愿之讯。",
+  "palette.goal": "导立愿",
+  "cmd.goal": "导立愿——投 system notification，使当前器灵读 goal manual，导人明 objective / criteria / reminder / 取消之义，待确认后方写 .notification/goal.json"
 }

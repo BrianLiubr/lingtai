@@ -19,6 +19,7 @@
 ### 与器灵言
 - `/btw` — 进一旁问，不扰器灵当下之务。
 - `/insights` — 即索当下之务二三确切之见。
+- `/goal` — 令当下器灵导人立或修一 active goal。
 
 ### 器灵之生死
 - `/sleep` — 令器灵眠（可以 `/cpr` 醒之）。
@@ -70,6 +71,15 @@
 
 令器灵即观当务，出二三确切之见。凡欲即得器灵所见之结构化读，而不待自动洞见之节（于
 `/settings` 中启闭）者用之。
+
+### `/goal` — 导立 active goal
+**用：** `/goal` · `/goal <愿之草稿>`
+
+投一 `goal.request` 事入当下器灵之 `.notification/system.json`。器灵当读
+goal manual，与人同明 objective、success criteria、reminder delay 与取消之义；待人
+确认诸目后，方可写 `.notification/goal.json`。`/goal` 自身不直造 goal 文卷。后若
+dismiss `goal.reminder`，但隐其提醒；真欲取消 goal，当删 `.notification/goal.json`，
+或置其 status 为 inactive/cancelled/done。
 
 ### `/sleep` — 令器灵眠
 **用：** `/sleep`（当下器灵）· `/sleep all`（项目内诸器灵）
