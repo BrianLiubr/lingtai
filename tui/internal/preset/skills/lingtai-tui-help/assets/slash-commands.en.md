@@ -46,7 +46,6 @@ to `~/Downloads`. Press `Esc` or `q` to return to the mail view.
 ### Network & sharing
 - `/mailbox` — browse all mailbox messages and attachments.
 - `/projects` — browse registered projects and their networks.
-- `/agora` — browse exported networks and recipes from the marketplace.
 - `/export` — export a reusable recipe for sharing.
 - `/viz` — open the network visualization in the browser.
 
@@ -210,19 +209,11 @@ stream.
 Lists registered projects and their agent networks. Use it when you work across
 several LingTai projects and want to see them and their networks in one place.
 
-### `/agora` — browse the agora marketplace
-**Usage:** `/agora`
-
-Browses exported networks and recipes published to the agora marketplace. Use it
-to discover and pull in networks or recipes others have shared. To publish your
-own, use `/export`.
-
 ### `/export` — export a reusable recipe
 **Usage:** `/export` · `/export recipe` (explicit form)
 
 Exports a reusable recipe of the current setup so it can be shared. Use it to
-package your agent configuration for reuse or to publish to the `/agora`
-marketplace.
+package your agent configuration for reuse and sharing.
 
 ### `/viz` — open the network visualization
 **Usage:** `/viz`

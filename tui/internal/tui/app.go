@@ -32,7 +32,6 @@ const (
 	appViewNirvana
 	appViewLibrary
 	appViewProjects
-	appViewAgora
 	appViewLogin
 	appViewCodex
 	appViewMailbox
@@ -52,7 +51,6 @@ type App struct {
 	props         PropsModel
 	library       LibraryModel
 	projects      ProjectsModel
-	agora         AgoraModel
 	codex         CodexModel
 	system        SystemModel
 	mailbox       MailboxModel
@@ -216,8 +214,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.library, cmd = a.library.Update(msg)
 		case appViewProjects:
 			a.projects, cmd = a.projects.Update(msg)
-		case appViewAgora:
-			a.agora, cmd = a.agora.Update(msg)
 		case appViewFirstRun:
 			a.firstRun, cmd = a.firstRun.Update(msg)
 		case appViewLogin:
@@ -245,12 +241,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.switchToView(msg.View)
 
 	case MarkdownViewerCloseMsg:
-		// If agora is active, forward to AgoraModel (detail → list, not mail)
-		if a.currentView == appViewAgora {
-			updated, cmd := a.agora.Update(msg)
-			a.agora = updated
-			return a, cmd
-		}
 		a.currentView = appViewMail
 		return a, tea.Batch(a.mail.refreshMail, tickEvery(a.mail.pollRate), pulseTick(), a.sendSize())
 
@@ -479,7 +469,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case "q":
 			// Only quit if not in a text input context
-			if a.currentView != appViewSetup && a.currentView != appViewFirstRun && a.currentView != appViewMail && a.currentView != appViewProps && a.currentView != appViewAddon && a.currentView != appViewNirvana && a.currentView != appViewLibrary && a.currentView != appViewProjects && a.currentView != appViewAgora && a.currentView != appViewLogin && a.currentView != appViewCodex && a.currentView != appViewMailbox && a.currentView != appViewSystem && a.currentView != appViewPresets && a.currentView != appViewDaemons && a.currentView != appViewNotification && a.currentView != appViewHelp {
+			if a.currentView != appViewSetup && a.currentView != appViewFirstRun && a.currentView != appViewMail && a.currentView != appViewProps && a.currentView != appViewAddon && a.currentView != appViewNirvana && a.currentView != appViewLibrary && a.currentView != appViewProjects && a.currentView != appViewLogin && a.currentView != appViewCodex && a.currentView != appViewMailbox && a.currentView != appViewSystem && a.currentView != appViewPresets && a.currentView != appViewDaemons && a.currentView != appViewNotification && a.currentView != appViewHelp {
 				return a, tea.Quit
 			}
 		}
@@ -526,10 +516,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case appViewProjects:
 		updated, cmd := a.projects.Update(msg)
 		a.projects = updated
-		return a, cmd
-	case appViewAgora:
-		updated, cmd := a.agora.Update(msg)
-		a.agora = updated
 		return a, cmd
 	case appViewLogin:
 		var cmd tea.Cmd
@@ -801,10 +787,6 @@ func (a App) handlePaletteCommand(command, args string) (tea.Model, tea.Cmd) {
 			a.presetLibrary = NewPresetLibraryModel(a.tuiConfig.Language, a.globalDir)
 		}
 		return a, tea.Batch(a.presetLibrary.Init(), a.sendSize())
-	case "agora":
-		a.currentView = appViewAgora
-		a.agora = NewAgoraModel(a.globalDir, a.projectDir)
-		return a, tea.Batch(a.agora.Init(), a.sendSize())
 	case "export":
 		if args != "" && args != "recipe" {
 			addMsg(i18n.T("export.help"))
@@ -1293,10 +1275,6 @@ func (a App) switchToView(viewName string) (tea.Model, tea.Cmd) {
 		a.currentView = appViewProjects
 		a.projects = NewProjectsModel(a.globalDir, a.projectDir)
 		return a, tea.Batch(a.projects.Init(), a.sendSize())
-	case "agora":
-		a.currentView = appViewAgora
-		a.agora = NewAgoraModel(a.globalDir, a.projectDir)
-		return a, tea.Batch(a.agora.Init(), a.sendSize())
 	case "mcp":
 		if a.orchDir != "" {
 			a.currentView = appViewAddon
@@ -1344,8 +1322,6 @@ func (a App) View() tea.View {
 		content = a.library.View()
 	case appViewProjects:
 		content = a.projects.View()
-	case appViewAgora:
-		content = a.agora.View()
 	case appViewLogin:
 		content = a.login.View()
 	case appViewCodex:
