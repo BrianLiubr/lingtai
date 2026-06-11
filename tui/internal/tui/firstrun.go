@@ -3512,17 +3512,17 @@ func (m *FirstRunModel) enterAgentNameDir(p preset.Preset) {
 	m.nameInput.Focus()
 	m.dirInput.Blur()
 
-	// Language — inherit from preset, fallback to TUI config language
+	// Language — fresh first-run/rehydration agents follow the current TUI
+	// language so recipe prompts (notably Tutorial) match the UI the human chose.
+	// Preset language is only a fallback for malformed/empty TUI config; /setup
+	// surfaces the existing agent language below from init.json.
 	m.agentLangIdx = 0
-	presetLang, hasLang := p.Manifest["language"].(string)
-	if !hasLang || presetLang == "" {
-		presetLang = config.LoadTUIConfig(m.globalDir).Language
-	}
-	for i, lang := range []string{"en", "zh", "wen"} {
-		if lang == presetLang {
-			m.agentLangIdx = i
-			break
-		}
+	presetLang, _ := p.Manifest["language"].(string)
+	tuiLang := config.LoadTUIConfig(m.globalDir).Language
+	if idx, ok := languageIndex(tuiLang); ok {
+		m.agentLangIdx = idx
+	} else if idx, ok := languageIndex(presetLang); ok {
+		m.agentLangIdx = idx
 	}
 
 	// Numeric defaults — overridden by saved init.json values in setup mode below.
@@ -3595,6 +3595,12 @@ func (m *FirstRunModel) enterAgentNameDir(p preset.Preset) {
 					} else {
 						m.nirvanaIdx = 1
 					}
+				}
+			}
+			if existingLang, _ := manifest["language"].(string); existingLang != "" {
+				if idx, ok := languageIndex(existingLang); ok {
+					m.agentLangIdx = idx
+					m.updatePromptPaths()
 				}
 			}
 		}
@@ -3704,6 +3710,15 @@ func (m *FirstRunModel) focusAgentField() tea.Cmd {
 		return m.commentInput.Focus()
 	}
 	return nil
+}
+
+func languageIndex(lang string) (int, bool) {
+	for i, candidate := range []string{"en", "zh", "wen"} {
+		if lang == candidate {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // updatePromptPaths updates prompt path fields when language changes,

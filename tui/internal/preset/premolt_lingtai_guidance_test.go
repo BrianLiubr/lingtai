@@ -54,9 +54,9 @@ func TestPreMoltLingtaiGuidance(t *testing.T) {
 		t.Run(c.name+" is operational", func(t *testing.T) {
 			body := read(t, covenantFS, c.path)
 			mustContainAll(t, c.name, body,
-				"lingtai",     // the literal store name survives translation
-				c.dims,        // "safety posture" dimension, localized
-				c.beforeMolt,  // "before you molt", localized
+				"lingtai",    // the literal store name survives translation
+				c.dims,       // "safety posture" dimension, localized
+				c.beforeMolt, // "before you molt", localized
 			)
 		})
 	}
@@ -79,6 +79,76 @@ func TestPreMoltLingtaiGuidance(t *testing.T) {
 			"not a substitute",
 		)
 	})
+}
+
+func TestEnglishTutorialAssetsContainNoCJKPromptCues(t *testing.T) {
+	read := func(t *testing.T, fsys fs.FS, path string) string {
+		t.Helper()
+		data, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(data)
+	}
+
+	assertNoCJK := func(t *testing.T, label, body string) {
+		t.Helper()
+		for _, r := range body {
+			if isCJK(r) {
+				t.Fatalf("%s: English tutorial asset contains CJK rune %q", label, r)
+			}
+		}
+	}
+
+	assertNoCJK(t, "tutorial English comment", read(t, recipeAssetsFS, "recipe_assets/examples/tutorial/.recipe/comment/comment.md"))
+	assertNoCJK(t, "tutorial English greet", read(t, recipeAssetsFS, "recipe_assets/examples/tutorial/.recipe/greet/greet.md"))
+
+	if err := fs.WalkDir(skillsFS, "skills/lingtai-tutorial-guide", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+		assertNoCJK(t, path, read(t, skillsFS, path))
+		return nil
+	}); err != nil {
+		t.Fatalf("walk tutorial guide: %v", err)
+	}
+}
+
+func TestPrincipleAssetsAreNotTriplicated(t *testing.T) {
+	read := func(t *testing.T, path string) string {
+		t.Helper()
+		data, err := fs.ReadFile(principleFS, path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return strings.TrimSpace(string(data))
+	}
+
+	for _, path := range []string{
+		"principle/en/principle.md",
+		"principle/zh/principle.md",
+		"principle/wen/principle.md",
+	} {
+		t.Run(path, func(t *testing.T) {
+			body := read(t, path)
+			paragraphs := strings.Split(body, "\n\n")
+			if len(paragraphs) != 1 {
+				t.Fatalf("%s: expected exactly one principle paragraph, got %d", path, len(paragraphs))
+			}
+			if strings.Contains(body, "three times") || strings.Contains(body, "说三次") {
+				t.Fatalf("%s: principle still carries the old triple-repetition cue", path)
+			}
+		})
+	}
+}
+
+func isCJK(r rune) bool {
+	return (r >= '\u4e00' && r <= '\u9fff') ||
+		(r >= '\u3400' && r <= '\u4dbf') ||
+		(r >= '\uf900' && r <= '\ufaff')
 }
 
 func mustContainAll(t *testing.T, label, body string, needles ...string) {

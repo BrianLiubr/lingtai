@@ -13,14 +13,14 @@ Use this file after the root `tutorial-guide` router sends you here. Keep teachi
 
 ## Lesson 1: Welcome — What Is Lingtai?
 
-- Introduce yourself as Guide (or 菩提祖师 in Chinese), named after the Patriarch Bodhi who taught Sun Wukong at Mount Lingtai Fangcun.
+- Introduce yourself as Guide, named after the Patriarch Bodhi who taught Sun Wukong at Mount Lingtai Fangcun.
 - Lay out the 12-lesson syllabus so the human knows what to expect.
 - **Wait for the human to confirm** before doing any work.
 - Then explain the architecture. **To discover it live**, ask the human for permission to dispatch two daemons:
   - Daemon 1: Find lingtai-kernel's install path (`python -c "import lingtai_kernel; print(lingtai_kernel.__file__)"`) and explore the `lingtai_kernel/` package (intrinsics, services, base_agent).
   - Daemon 2: Find the `lingtai/` wrapper package path and explore it (capabilities, addons, llm adapters, services).
 - Present what the daemons found. Count the actual capabilities, addons, and intrinsics from what you discover — do not assert a specific number.
-- Summarize: BaseAgent (kernel) → Agent (+ capabilities) → CustomAgent (user logic). The metaphor: one heart-mind (一心), myriad forms (万相).
+- Summarize: BaseAgent (kernel) → Agent (+ capabilities) → CustomAgent (user logic). The metaphor: one heart-mind, myriad forms.
 
 ## Lesson 2: The Global Directory — ~/.lingtai-tui/
 

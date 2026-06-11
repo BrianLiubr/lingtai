@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tutorial English language fix</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --ink:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; --ok:#34d399; --warn:#fbbf24; }
+    body { margin:0; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:linear-gradient(135deg,#0f172a,#1e1b4b); color:var(--ink); }
+    main { max-width:980px; margin:0 auto; padding:48px 24px 64px; }
+    .card { background:rgba(17,24,39,.86); border:1px solid rgba(255,255,255,.12); border-radius:20px; padding:28px; box-shadow:0 24px 70px rgba(0,0,0,.35); }
+    h1 { margin:0 0 8px; font-size:34px; line-height:1.15; }
+    h2 { margin:28px 0 10px; font-size:20px; color:#bfdbfe; }
+    p { margin:10px 0; }
+    .lead { color:var(--muted); font-size:18px; }
+    .status { display:inline-block; padding:6px 10px; border-radius:999px; background:rgba(52,211,153,.15); color:var(--ok); font-weight:700; font-size:13px; letter-spacing:.02em; }
+    ul { padding-left:22px; }
+    code { background:rgba(255,255,255,.08); padding:2px 5px; border-radius:6px; }
+    pre { overflow:auto; background:#020617; border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:14px; color:#d1d5db; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+    .mini { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px; }
+    .mini strong { color:#fff; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <div class="status">Ready for PR review</div>
+    <h1>Fix Tutorial English language drift</h1>
+    <p class="lead">Tutorial setup now follows the selected TUI language, and the English Tutorial prompt/curriculum no longer contains Chinese-language cues that could steer an English guide into Chinese.</p>
+
+    <h2>Root cause</h2>
+    <p>There were two language-leak paths. First, <code>FirstRunModel.enterAgentNameDir</code> initialized the new agent language from the selected preset's <code>manifest.language</code> before consulting the current TUI language. Second — the root cause Jason pointed at — the English Tutorial comment and lesson assets themselves contained Chinese identity/language cues (<code>现代汉语</code>, <code>文言</code>, <code>菩提祖师</code>, and Chinese metaphor glosses). Even when the UI and agent language were both English, those cues could nudge the model into Chinese.</p>
+
+    <h2>Change</h2>
+    <div class="grid">
+      <div class="mini"><strong>Fresh first-run / rehydration</strong><br/>Default agent language now follows <code>tui_config.json</code> language first.</div>
+      <div class="mini"><strong>Preset fallback</strong><br/>Preset <code>manifest.language</code> is still used if the TUI config language is empty or invalid.</div>
+      <div class="mini"><strong>/setup preservation</strong><br/>Existing agents still surface their saved <code>init.json</code> language when rerunning <code>/setup</code>.</div>
+      <div class="mini"><strong>English prompt hygiene</strong><br/>English Tutorial comment and curriculum assets now avoid CJK prompt cues; zh/wen localized files keep Chinese guidance.</div>
+    </div>
+
+    <h2>Files touched</h2>
+    <ul>
+      <li><code>tui/internal/tui/firstrun.go</code> — language defaulting logic and a small <code>languageIndex</code> helper.</li>
+      <li><code>tui/internal/tui/firstrun_test.go</code> — regression coverage for English/Chinese UI precedence, preset fallback, and setup preservation.</li>
+      <li><code>tui/internal/preset/recipe_assets/examples/tutorial/.recipe/comment/comment.md</code> — removes Chinese-language identity instructions from the English Tutorial comment.</li>
+      <li><code>tui/internal/preset/skills/lingtai-tutorial-guide/reference/orientation/SKILL.md</code> — removes Chinese glosses from the English orientation lesson.</li>
+      <li><code>tui/internal/preset/premolt_lingtai_guidance_test.go</code> — adds a regression that English Tutorial prompt/curriculum assets contain no CJK prompt cues.</li>
+      <li><code>tui/internal/tui/ANATOMY.md</code> — line/citation maintenance after the first-run file changed.</li>
+    </ul>
+
+    <h2>Validation</h2>
+    <pre>git diff --check
+cd tui && go test ./internal/tui -run 'TestEnterAgentNameDir.*Language' -count=1
+cd tui && go test ./internal/preset -run 'TestEnglishTutorialAssetsContainNoCJKPromptCues|TestPreMoltLingtaiGuidance' -count=1
+cd tui && go test ./internal/preset ./internal/tui -count=1
+cd tui && go test ./...</pre>
+
+    <h2>Notes</h2>
+    <p>I attempted a narrow Claude Code implementation job first, but it stalled without producing changes, so I cancelled it and applied the focused patch directly. Jason then clarified the stronger repro: English UI + English agent still emitting Chinese. The PR now covers both the earlier defaulting leak and the actual English-asset prompt cue leak. No merge has been performed.</p>
+  </section>
+</main>
+
+<section><h2>Latest update: static principle cleanup</h2>
+<p>After Jason pointed out that <code>principle.md</code> was stale, this PR now also reduces the bundled TUI principle assets from three repeated copies plus “important things bear repeating three times” down to one copy in each language (<code>en</code>, <code>zh</code>, <code>wen</code>).</p>
+<p>A regression test (<code>TestPrincipleAssetsAreNotTriplicated</code>) now checks that each principle asset has exactly one paragraph and no old triple-repetition cue.</p>
+</section>
+</body>
+</html>

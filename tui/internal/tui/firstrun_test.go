@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/anthropics/lingtai-tui/internal/config"
 	"github.com/anthropics/lingtai-tui/internal/preset"
 )
 
@@ -393,5 +395,103 @@ func TestSetupModeEnterOnKeepCurrentAdvancesToAgentPresets(t *testing.T) {
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.step != stepAgentPresets {
 		t.Fatalf("Enter on setup keep-current row should advance to agent presets; got step %v", m.step)
+	}
+}
+
+func TestEnterAgentNameDirLanguageFollowsTUIConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		tuiLang     string
+		presetLang  string
+		wantIdx     int
+		wantPathBit string
+	}{
+		{
+			name:        "english UI overrides chinese preset",
+			tuiLang:     "en",
+			presetLang:  "zh",
+			wantIdx:     0,
+			wantPathBit: filepath.Join("covenant", "en", "covenant.md"),
+		},
+		{
+			name:        "chinese UI overrides english preset",
+			tuiLang:     "zh",
+			presetLang:  "en",
+			wantIdx:     1,
+			wantPathBit: filepath.Join("covenant", "zh", "covenant.md"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			globalDir := t.TempDir()
+			if err := config.SaveTUIConfig(globalDir, config.TUIConfig{Language: tt.tuiLang, MailPageSize: 100}); err != nil {
+				t.Fatalf("save TUI config: %v", err)
+			}
+			m := NewFirstRunModel(t.TempDir(), globalDir, true, "")
+			m.enterAgentNameDir(preset.Preset{
+				Name: "tutorial-test",
+				Manifest: map[string]interface{}{
+					"language": tt.presetLang,
+				},
+			})
+
+			if m.agentLangIdx != tt.wantIdx {
+				t.Fatalf("agentLangIdx = %d, want %d", m.agentLangIdx, tt.wantIdx)
+			}
+			if got := m.covenantInput.Value(); !strings.Contains(got, tt.wantPathBit) {
+				t.Fatalf("covenantInput = %q, want path containing %q", got, tt.wantPathBit)
+			}
+		})
+	}
+}
+
+func TestEnterAgentNameDirLanguageFallsBackToPresetWhenTUIConfigInvalid(t *testing.T) {
+	globalDir := t.TempDir()
+	if err := config.SaveTUIConfig(globalDir, config.TUIConfig{Language: "bogus", MailPageSize: 100}); err != nil {
+		t.Fatalf("save TUI config: %v", err)
+	}
+	m := NewFirstRunModel(t.TempDir(), globalDir, true, "")
+	m.enterAgentNameDir(preset.Preset{
+		Name: "fallback-test",
+		Manifest: map[string]interface{}{
+			"language": "wen",
+		},
+	})
+
+	if m.agentLangIdx != 2 {
+		t.Fatalf("agentLangIdx = %d, want wen index 2", m.agentLangIdx)
+	}
+	want := filepath.Join("covenant", "wen", "covenant.md")
+	if got := m.covenantInput.Value(); !strings.Contains(got, want) {
+		t.Fatalf("covenantInput = %q, want path containing %q", got, want)
+	}
+}
+
+func TestEnterAgentNameDirSetupModeSurfacesExistingInitLanguage(t *testing.T) {
+	globalDir := t.TempDir()
+	if err := config.SaveTUIConfig(globalDir, config.TUIConfig{Language: "en", MailPageSize: 100}); err != nil {
+		t.Fatalf("save TUI config: %v", err)
+	}
+	m := NewFirstRunModel(t.TempDir(), globalDir, true, "")
+	m.setupMode = true
+	m.setupKeepInitJSON = map[string]interface{}{
+		"manifest": map[string]interface{}{
+			"language": "wen",
+		},
+	}
+	m.enterAgentNameDir(preset.Preset{
+		Name: "keep-current",
+		Manifest: map[string]interface{}{
+			"language": "zh",
+		},
+	})
+
+	if m.agentLangIdx != 2 {
+		t.Fatalf("agentLangIdx = %d, want existing init wen index 2", m.agentLangIdx)
+	}
+	want := filepath.Join("covenant", "wen", "covenant.md")
+	if got := m.covenantInput.Value(); !strings.Contains(got, want) {
+		t.Fatalf("covenantInput = %q, want path containing %q", got, want)
 	}
 }
