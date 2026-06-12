@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestDefaultCommandsIncludesDaemons(t *testing.T) {
@@ -173,4 +176,89 @@ func TestRenderDetailPutsEventsLast(t *testing.T) {
 	if !(taskIdx < eventsIdx && resultIdx < eventsIdx && chatIdx < eventsIdx) {
 		t.Fatalf("events not last: task=%d result=%d chat=%d events=%d", taskIdx, resultIdx, chatIdx, eventsIdx)
 	}
+}
+
+func TestDaemonsPaneScrollFocusIsIndependent(t *testing.T) {
+	m := testDaemonsModelWithItems(t, 12, 8)
+	if m.focused != daemonPaneDetail {
+		t.Fatalf("initial focused pane = %v, want detail", m.focused)
+	}
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if m.detailVP.YOffset() == 0 {
+		t.Fatalf("pgdown with detail focus did not scroll detail pane")
+	}
+	if m.listVP.YOffset() != 0 {
+		t.Fatalf("pgdown with detail focus scrolled list pane to %d", m.listVP.YOffset())
+	}
+	detailOffset := m.detailVP.YOffset()
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.focused != daemonPaneList {
+		t.Fatalf("tab focused pane = %v, want list", m.focused)
+	}
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if m.listVP.YOffset() == 0 {
+		t.Fatalf("pgdown with list focus did not scroll list pane")
+	}
+	if m.detailVP.YOffset() != detailOffset {
+		t.Fatalf("list-focused pgdown changed detail offset from %d to %d", detailOffset, m.detailVP.YOffset())
+	}
+}
+
+func TestDaemonsSelectionKeepsListVisibleAndResetsDetailScroll(t *testing.T) {
+	m := testDaemonsModelWithItems(t, 14, 7)
+	m.detailVP.SetYOffset(10)
+	for i := 0; i < 8; i++ {
+		m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+
+	if m.selected != 8 {
+		t.Fatalf("selected = %d, want 8", m.selected)
+	}
+	if m.detailVP.YOffset() != 0 {
+		t.Fatalf("selection change did not reset detail scroll; offset=%d", m.detailVP.YOffset())
+	}
+	if m.listVP.YOffset() == 0 {
+		t.Fatalf("list viewport did not scroll to keep selected item visible")
+	}
+	row := m.selectedListRow()
+	if row < m.listVP.YOffset() || row >= m.listVP.YOffset()+m.listVP.Height() {
+		t.Fatalf("selected row %d not visible in list offset=%d height=%d", row, m.listVP.YOffset(), m.listVP.Height())
+	}
+}
+
+func TestDaemonsLeftRightChooseFocusedPane(t *testing.T) {
+	m := testDaemonsModelWithItems(t, 3, 8)
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if m.focused != daemonPaneList {
+		t.Fatalf("left focused pane = %v, want list", m.focused)
+	}
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if m.focused != daemonPaneDetail {
+		t.Fatalf("right focused pane = %v, want detail", m.focused)
+	}
+}
+
+func testDaemonsModelWithItems(t *testing.T, count, height int) DaemonsModel {
+	t.Helper()
+	agentDir := t.TempDir()
+	m := NewDaemonsModel(filepath.Dir(agentDir), agentDir)
+	items := make([]daemonSummary, count)
+	for i := range items {
+		items[i] = daemonSummary{
+			Dir:     filepath.Join(agentDir, "daemons", fmt.Sprintf("em-%02d", i)),
+			Handle:  fmt.Sprintf("em-%02d", i),
+			State:   "running",
+			Backend: "lingtai",
+			Task:    fmt.Sprintf("daemon task %02d", i),
+			Result:  strings.Repeat(fmt.Sprintf("detail line %02d ", i), 30),
+			Events: []daemonEvent{
+				{Event: "tool_call", Name: "read", Raw: strings.Repeat("event body ", 20)},
+			},
+		}
+	}
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: height})
+	m, _ = m.Update(daemonsLoadMsg{selectedDir: agentDir, items: items})
+	return m
 }

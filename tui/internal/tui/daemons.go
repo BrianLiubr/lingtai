@@ -25,6 +25,22 @@ const (
 	maxDaemonChats     = 8
 )
 
+type daemonPane int
+
+const (
+	daemonPaneList daemonPane = iota
+	daemonPaneDetail
+)
+
+func (p daemonPane) label() string {
+	switch p {
+	case daemonPaneList:
+		return "list"
+	default:
+		return "detail"
+	}
+}
+
 // DaemonsModel renders the /daemons view: a read-only browser for one agent's
 // daemon folders with Ctrl+T agent switching.
 type DaemonsModel struct {
@@ -37,11 +53,13 @@ type DaemonsModel struct {
 	selected   int
 	loadErr    string
 
-	viewport viewport.Model
+	listVP   viewport.Model
+	detailVP viewport.Model
 	pickerVP viewport.Model
 	ready    bool
 	width    int
 	height   int
+	focused  daemonPane
 
 	pickerOpen bool
 	pickerIdx  int
@@ -141,17 +159,19 @@ func (m DaemonsModel) Update(msg tea.Msg) (DaemonsModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		vpHeight := m.height - daemonsHeaderLines - daemonsFooterLines
-		if vpHeight < 1 {
-			vpHeight = 1
-		}
+		vpHeight := m.bodyHeight()
 		if !m.ready {
-			m.viewport = viewport.New()
+			m.listVP = viewport.New()
+			m.detailVP = viewport.New()
 			m.pickerVP = viewport.New()
+			m.focused = daemonPaneDetail
 			m.ready = true
 		}
-		m.viewport.SetWidth(m.width)
-		m.viewport.SetHeight(vpHeight)
+		leftW, rightW := m.paneWidths()
+		m.listVP.SetWidth(leftW)
+		m.listVP.SetHeight(vpHeight)
+		m.detailVP.SetWidth(rightW)
+		m.detailVP.SetHeight(vpHeight)
 		m.pickerVP.SetWidth(m.width)
 		m.pickerVP.SetHeight(vpHeight)
 		m.syncContent()
@@ -169,6 +189,7 @@ func (m DaemonsModel) Update(msg tea.Msg) (DaemonsModel, tea.Cmd) {
 		if m.selected < 0 {
 			m.selected = 0
 		}
+		m.detailVP.GotoTop()
 		m.syncContent()
 		return m, nil
 
@@ -178,7 +199,11 @@ func (m DaemonsModel) Update(msg tea.Msg) (DaemonsModel, tea.Cmd) {
 			m.pickerVP, cmd = m.pickerVP.Update(msg)
 			return m, cmd
 		}
-		m.viewport, cmd = m.viewport.Update(msg)
+		if m.focused == daemonPaneList {
+			m.listVP, cmd = m.listVP.Update(msg)
+			return m, cmd
+		}
+		m.detailVP, cmd = m.detailVP.Update(msg)
 		return m, cmd
 
 	case tea.KeyPressMsg:
@@ -204,41 +229,46 @@ func (m DaemonsModel) Update(msg tea.Msg) (DaemonsModel, tea.Cmd) {
 			return m, nil
 		case "ctrl+r", "r":
 			return m, m.loadData
+		case "tab", "shift+tab":
+			m.toggleFocusedPane()
+			return m, nil
+		case "left":
+			m.focused = daemonPaneList
+			return m, nil
+		case "right":
+			m.focused = daemonPaneDetail
+			return m, nil
 		case "up", "k":
 			if m.selected > 0 {
 				m.selected--
-				m.viewport.GotoTop()
+				m.detailVP.GotoTop()
 				m.syncContent()
 			}
 			return m, nil
 		case "down", "j":
 			if m.selected < len(m.items)-1 {
 				m.selected++
-				m.viewport.GotoTop()
+				m.detailVP.GotoTop()
 				m.syncContent()
 			}
 			return m, nil
 		case "home":
 			m.selected = 0
-			m.viewport.GotoTop()
+			m.detailVP.GotoTop()
 			m.syncContent()
 			return m, nil
 		case "end":
 			if len(m.items) > 0 {
 				m.selected = len(m.items) - 1
 			}
-			m.viewport.GotoTop()
+			m.detailVP.GotoTop()
 			m.syncContent()
 			return m, nil
 		case "pgup", "ctrl+u":
-			off := m.viewport.YOffset() - 10
-			if off < 0 {
-				off = 0
-			}
-			m.viewport.SetYOffset(off)
+			m.scrollFocusedPane(-10)
 			return m, nil
 		case "pgdown", "ctrl+d":
-			m.viewport.SetYOffset(m.viewport.YOffset() + 10)
+			m.scrollFocusedPane(10)
 			return m, nil
 		}
 	}
@@ -285,47 +315,23 @@ func (m *DaemonsModel) syncContent() {
 	if !m.ready {
 		return
 	}
-	m.viewport.SetContent(m.renderContent())
+	leftW, rightW := m.paneWidths()
+	m.listVP.SetWidth(leftW)
+	m.detailVP.SetWidth(rightW)
+	m.listVP.SetContent(m.renderList(leftW))
+	m.detailVP.SetContent(m.renderDetail(rightW))
+	m.ensureSelectedListVisible()
 }
 
-func (m *DaemonsModel) syncPicker() {
-	if !m.ready || !m.pickerOpen {
-		return
+func (m DaemonsModel) bodyHeight() int {
+	vpHeight := m.height - daemonsHeaderLines - daemonsFooterLines
+	if vpHeight < 1 {
+		vpHeight = 1
 	}
-	m.pickerVP.SetContent(m.renderPicker())
+	return vpHeight
 }
 
-func (m DaemonsModel) View() string {
-	title := fmt.Sprintf("%s — %s", i18n.T("daemons.title"), daemonAgentName(m.selectedDir))
-	header := StyleTitle.Render("  "+title) + "\n" + strings.Repeat("─", m.width)
-	scrollHint := ""
-	if m.ready && !m.pickerOpen && !m.viewport.AtBottom() {
-		scrollHint = " " + RuneBullet + " ↑↓ scroll"
-	}
-	footerLine := "  ↑↓/jk " + i18n.T("manage.select") + " " + RuneBullet + " " + i18n.T("daemons.refresh") + " " + RuneBullet + " " + i18n.T("hints.props_select") + " " + RuneBullet + " esc " + i18n.T("manage.back") + scrollHint
-	footer := strings.Repeat("─", m.width) + "\n" + StyleFaint.Render(footerLine)
-	body := ""
-	if m.ready {
-		if m.pickerOpen {
-			body = m.pickerVP.View()
-		} else {
-			body = m.viewport.View()
-		}
-	}
-	return header + "\n" + PaintViewportBG(body, m.width) + "\n" + footer
-}
-
-func (m DaemonsModel) renderContent() string {
-	if m.width <= 0 {
-		return ""
-	}
-	if m.loadErr != "" {
-		return "\n  " + StyleFaint.Render(m.loadErr)
-	}
-	if len(m.items) == 0 {
-		return "\n  " + StyleFaint.Render(i18n.T("daemons.no_daemons"))
-	}
-
+func (m DaemonsModel) paneWidths() (int, int) {
 	leftW := m.width / 3
 	if leftW < 30 {
 		leftW = 30
@@ -341,9 +347,118 @@ func (m DaemonsModel) renderContent() string {
 		}
 		rightW = m.width - leftW - 3
 	}
+	return leftW, rightW
+}
+
+func (m *DaemonsModel) toggleFocusedPane() {
+	if m.focused == daemonPaneList {
+		m.focused = daemonPaneDetail
+		return
+	}
+	m.focused = daemonPaneList
+}
+
+func (m *DaemonsModel) scrollFocusedPane(delta int) {
+	if m.focused == daemonPaneList {
+		m.listVP.SetYOffset(nonNegativeOffset(m.listVP.YOffset() + delta))
+		return
+	}
+	m.detailVP.SetYOffset(nonNegativeOffset(m.detailVP.YOffset() + delta))
+}
+
+func nonNegativeOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	return offset
+}
+
+func (m *DaemonsModel) ensureSelectedListVisible() {
+	if len(m.items) == 0 || m.listVP.Height() <= 0 {
+		return
+	}
+	row := m.selectedListRow()
+	off := m.listVP.YOffset()
+	height := m.listVP.Height()
+	if row < off {
+		m.listVP.SetYOffset(row)
+		return
+	}
+	if row >= off+height {
+		m.listVP.SetYOffset(row - height + 1)
+	}
+}
+
+func (m DaemonsModel) selectedListRow() int {
+	row := 3 // title, count, blank
+	for i := 0; i < m.selected && i < len(m.items); i++ {
+		row++
+		if daemonListDescription(m.items[i]) != "" {
+			row++
+		}
+		if i != len(m.items)-1 {
+			row++
+		}
+	}
+	return row
+}
+
+func daemonListDescription(d daemonSummary) string {
+	if d.Task != "" {
+		return d.Task
+	}
+	return d.Backend
+}
+
+func (m *DaemonsModel) syncPicker() {
+	if !m.ready || !m.pickerOpen {
+		return
+	}
+	m.pickerVP.SetContent(m.renderPicker())
+}
+
+func (m DaemonsModel) View() string {
+	title := fmt.Sprintf("%s — %s", i18n.T("daemons.title"), daemonAgentName(m.selectedDir))
+	header := StyleTitle.Render("  "+title) + "\n" + strings.Repeat("─", m.width)
+	scrollHint := ""
+	if m.ready && !m.pickerOpen && m.focusedPaneCanScroll() {
+		scrollHint = " " + RuneBullet + " pg scroll " + m.focused.label()
+	}
+	footerLine := "  ↑↓/jk " + i18n.T("manage.select") + " " + RuneBullet + " tab/←→ focus " + m.focused.label() + " " + RuneBullet + " pg scroll " + RuneBullet + " " + i18n.T("daemons.refresh") + " " + RuneBullet + " " + i18n.T("hints.props_select") + " " + RuneBullet + " esc " + i18n.T("manage.back") + scrollHint
+	footer := strings.Repeat("─", m.width) + "\n" + StyleFaint.Render(footerLine)
+	body := ""
+	if m.ready {
+		if m.pickerOpen {
+			body = m.pickerVP.View()
+		} else {
+			body = m.renderPanes()
+		}
+	}
+	return header + "\n" + PaintViewportBG(body, m.width) + "\n" + footer
+}
+
+func (m DaemonsModel) focusedPaneCanScroll() bool {
+	if m.focused == daemonPaneList {
+		return !m.listVP.AtBottom()
+	}
+	return !m.detailVP.AtBottom()
+}
+
+func (m DaemonsModel) renderPanes() string {
+	if m.width <= 0 {
+		return ""
+	}
+	if m.loadErr != "" {
+		return "\n  " + StyleFaint.Render(m.loadErr)
+	}
+	if len(m.items) == 0 {
+		return "\n  " + StyleFaint.Render(i18n.T("daemons.no_daemons"))
+	}
+
+	leftW, _ := m.paneWidths()
 	sep := StyleFaint.Render(" │ ")
-	leftLines := strings.Split(m.renderList(leftW), "\n")
-	rightLines := strings.Split(m.renderDetail(rightW), "\n")
+	leftLines := strings.Split(m.listVP.View(), "\n")
+	rightLines := strings.Split(m.detailVP.View(), "\n")
 	for len(leftLines) < len(rightLines) {
 		leftLines = append(leftLines, "")
 	}
