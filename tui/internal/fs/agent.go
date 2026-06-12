@@ -108,9 +108,41 @@ func CapabilitiesForDisplay(manifest []string) []string {
 	return out
 }
 
-// ReadInitManifest reads init.json from dir, extracts manifest fields,
-// and flattens the llm sub-object (model, provider, base_url) to top level.
+// ReadInitManifest returns the agent's manifest fields with the llm
+// sub-object (model, provider, base_url) and soul.delay flattened to top
+// level. It prefers the kernel-published resolved-manifest artifact
+// (system/manifest.resolved.json — preset materialized, validated,
+// secret-redacted; kernel issue #259) and falls back to raw init.json when
+// the artifact is absent or malformed (stopped / never-booted agents).
 func ReadInitManifest(dir string) (map[string]interface{}, error) {
+	manifest, err := readResolvedInitManifest(dir)
+	if err != nil {
+		manifest, err = readRawInitManifest(dir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	flattenInitManifest(manifest)
+	return manifest, nil
+}
+
+func readResolvedInitManifest(dir string) (map[string]interface{}, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "system", "manifest.resolved.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read manifest.resolved.json: %w", err)
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse manifest.resolved.json: %w", err)
+	}
+	manifest, ok := raw["manifest"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("no manifest in manifest.resolved.json")
+	}
+	return manifest, nil
+}
+
+func readRawInitManifest(dir string) (map[string]interface{}, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "init.json"))
 	if err != nil {
 		return nil, fmt.Errorf("read init.json: %w", err)
@@ -123,6 +155,10 @@ func ReadInitManifest(dir string) (map[string]interface{}, error) {
 	if !ok {
 		return nil, fmt.Errorf("no manifest in init.json")
 	}
+	return manifest, nil
+}
+
+func flattenInitManifest(manifest map[string]interface{}) {
 	// Flatten llm sub-object into top level
 	if llm, ok := manifest["llm"].(map[string]interface{}); ok {
 		for _, key := range []string{"model", "provider", "base_url", "api_compat", "api_key_env"} {
@@ -137,7 +173,6 @@ func ReadInitManifest(dir string) (map[string]interface{}, error) {
 			manifest["soul_delay"] = v
 		}
 	}
-	return manifest, nil
 }
 
 // WritePrompt writes a .prompt signal file to inject a [system] text input message.

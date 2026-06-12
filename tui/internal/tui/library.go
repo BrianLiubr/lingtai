@@ -255,12 +255,22 @@ func scanGroupFlat(dir, group string, skills *[]skillEntry, problems *[]skillPro
 
 // ── init.json reader + path resolution (mirrors kernel library cap) ─────────
 
-// readLibraryPaths returns the Tier 1 skills paths from an agent's init.json.
-// Looks at manifest.capabilities.skills.paths. Returns an empty slice if:
-//   - init.json is missing or unreadable
-//   - skills capability is not declared
+// readLibraryPaths returns the Tier 1 skills paths the agent effectively runs
+// with (manifest.capabilities.skills.paths).
+//
+// The kernel publishes the fully-resolved manifest (preset materialized,
+// validated, secret-redacted) to system/manifest.resolved.json on every
+// boot/refresh (kernel issue #259). When that artifact is present and valid
+// it is the runtime truth and wins outright — even if it declares no skills
+// capability. Raw init.json is only consulted as a fallback for stopped /
+// never-booted agents or a malformed artifact. Returns an empty slice if:
+//   - neither source is readable
+//   - skills capability is not declared in the chosen source
 //   - paths field is absent or not a list of strings
 func readLibraryPaths(agentDir string) []string {
+	if paths, ok := readResolvedLibraryPaths(agentDir); ok {
+		return paths
+	}
 	initPath := filepath.Join(agentDir, "init.json")
 	data, err := os.ReadFile(initPath)
 	if err != nil {
@@ -274,14 +284,52 @@ func readLibraryPaths(agentDir string) []string {
 	if err := json.Unmarshal(data, &initFile); err != nil {
 		return nil
 	}
-	libRaw, ok := initFile.Manifest.Capabilities["skills"]
+	return skillsPathsFromCapabilities(initFile.Manifest.Capabilities)
+}
+
+// readResolvedLibraryPaths reads skills.paths from the kernel-published
+// resolved-manifest artifact (system/manifest.resolved.json). The second
+// return value reports whether the artifact was usable: false means absent /
+// unreadable / malformed (caller falls back to raw init.json), true means the
+// artifact is authoritative — including when it declares no skills paths.
+func readResolvedLibraryPaths(agentDir string) ([]string, bool) {
+	data, err := os.ReadFile(filepath.Join(agentDir, "system", "manifest.resolved.json"))
+	if err != nil {
+		return nil, false
+	}
+	var artifact struct {
+		Manifest *struct {
+			Capabilities map[string]json.RawMessage `json:"capabilities"`
+		} `json:"manifest"`
+	}
+	if err := json.Unmarshal(data, &artifact); err != nil || artifact.Manifest == nil {
+		return nil, false
+	}
+	if raw, ok := artifact.Manifest.Capabilities["skills"]; ok {
+		var lib struct {
+			Paths []string `json:"paths"`
+		}
+		if err := json.Unmarshal(raw, &lib); err != nil {
+			// skills block doesn't parse — treat the artifact as malformed
+			// rather than silently hiding paths init.json still declares.
+			return nil, false
+		}
+		return lib.Paths, true
+	}
+	return nil, true
+}
+
+// skillsPathsFromCapabilities extracts skills.paths from a raw capabilities
+// map. Returns nil when the capability is absent or its paths don't parse.
+func skillsPathsFromCapabilities(caps map[string]json.RawMessage) []string {
+	raw, ok := caps["skills"]
 	if !ok {
 		return nil
 	}
 	var lib struct {
 		Paths []string `json:"paths"`
 	}
-	if err := json.Unmarshal(libRaw, &lib); err != nil {
+	if err := json.Unmarshal(raw, &lib); err != nil {
 		return nil
 	}
 	return lib.Paths
