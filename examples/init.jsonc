@@ -158,9 +158,10 @@
     // Empty = use default molt behavior.
     "molt_prompt": "",
 
-    // Max LLM request turns per wake cycle.
-    // Safety limit — agent sleeps after this many turns.
-    "max_turns": 50,
+    // Per-wake loop budget: max iterations of the LLM/tool-call loop per
+    // wake cycle. Every tool call counts as a turn, not just LLM requests.
+    // Safety limit — agent sleeps once the budget is exhausted.
+    "max_turns": 500,
 
     // -------------------------------------------------------
     // Admin privileges

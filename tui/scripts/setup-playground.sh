@@ -57,7 +57,7 @@ cat > "$ORCH_DIR/init.json" << INITEOF
     "context_limit": null,
     "molt_pressure": 0.8,
     "molt_prompt": "",
-    "max_turns": 100,
+    "max_turns": 500,
     "admin": {"karma": true},
     "streaming": true
   },

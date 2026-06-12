@@ -198,6 +198,9 @@ func TestGenerateInitJSON_ProducesValidJSON(t *testing.T) {
 		if manifest["agent_name"] != "test-agent" {
 			t.Errorf("agent_name = %v, want %q", manifest["agent_name"], "test-agent")
 		}
+		if got, want := manifest["max_turns"], float64(500); got != want {
+			t.Errorf("max_turns = %v, want %v", got, want)
+		}
 
 		// Check .agent.json exists
 		agentPath := filepath.Join(lingtaiDir, "test-agent", ".agent.json")
