@@ -195,7 +195,7 @@ Shell entrypoints when useful:
 
 ```bash
 lingtai-tui                          # open the TUI in the current project
-lingtai-tui list <project>            # list agents and states
+lingtai-tui list [--detailed] [--admin] <project>  # contact-book view of running agents; marks main agents
 lingtai-tui spawn <dir> --preset <name> [--agent-name <name>]
 lingtai-tui bootstrap                # re-extract bundled skills/utilities
 lingtai-tui doctor                   # repair/update TUI runtime
@@ -235,7 +235,7 @@ project/
 Useful inspection commands:
 
 ```bash
-lingtai-tui list /path/to/project                          # running agents and states
+lingtai-tui list --detailed /path/to/project               # running agents, main-agent marker, identity/state/path
 tail -f /path/to/project/.lingtai/<agent>/logs/agent.log    # human-readable log
 jq -r '.event' /path/to/project/.lingtai/<agent>/logs/events.jsonl | tail   # structured events
 ```

@@ -164,7 +164,7 @@ flowchart LR
 
 ```bash
 lingtai-tui                          # 在当前项目打开 TUI
-lingtai-tui list <project>            # 列出当前项目的助理及状态
+lingtai-tui list [--detailed] [--admin] <project>  # 以通讯簿视图列出在线助理，并标出主 agent
 lingtai-tui spawn <dir> --preset <name> [--agent-name <name>]
 lingtai-tui bootstrap                # 重新展开自带技能/工具
 lingtai-tui doctor                   # 修复/升级 TUI 运行时
@@ -204,7 +204,7 @@ project/
 常用排查命令：
 
 ```bash
-lingtai-tui list /path/to/project                          # 列出在线助理及状态
+lingtai-tui list --detailed /path/to/project               # 在线助理、主 agent 标记、身份/状态/路径
 tail -f /path/to/project/.lingtai/<agent>/logs/agent.log    # 看人读日志
 jq -r '.event' /path/to/project/.lingtai/<agent>/logs/events.jsonl | tail   # 看结构化事件
 ```

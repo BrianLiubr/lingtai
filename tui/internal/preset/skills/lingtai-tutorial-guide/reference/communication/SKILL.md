@@ -17,6 +17,7 @@ Use this file after the root `tutorial-guide` router sends you here. Keep teachi
 - Walk through the internal message flow: human types in the TUI → TUI writes to the human/agent filesystem mailbox → agent wakes → agent reads → agent replies → reply lands in the human's inbox → TUI displays it.
 - Show a raw `message.json` from an inbox so the human can see that internal mail is just local filesystem state under `.lingtai/`.
 - Explain the difference between internal mail (filesystem-based, within `.lingtai/`) and external bridges (IMAP, Telegram, Feishu, WeChat, etc. via MCP addons). External bridges translate outside-platform events into the same agent-facing mailbox/notification pattern; they are not a separate mind or a privileged command channel.
+- Teach the decentralized contact-book rule: `lingtai-tui list --detailed` / `--admin` can identify running main agents from live local `.agent.json` state, but LingTai does not keep one global IM-handle database. Agents that want humans or peers to reach them through Telegram/Feishu/WeChat/etc. should publish and maintain those handles in their own durable profile, project skill, pad, or other public project context.
 
 ## LICC bridge mental model
 
