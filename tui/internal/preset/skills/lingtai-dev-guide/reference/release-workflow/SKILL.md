@@ -3,15 +3,20 @@ name: dev-guide-release-workflow
 description: >
   Nested lingtai-dev-guide reference for consequential LingTai releases: paired
   TUI/Portal + kernel release planning, clean worktrees, validation gates,
-  GitHub/PyPI/Homebrew publishing boundaries, website release-log/blog drafting,
-  and the reusable release blog template.
-version: 1.0.0
+  GitHub/PyPI/Homebrew publishing boundaries, the required self-contained HTML
+  release log, website release-log/blog drafting, and the reusable release blog
+  template.
+version: 1.1.0
 ---
 
 # Release Workflow
 
 Nested lingtai-dev-guide reference. Read this after the top-level router sends
 you here for release preparation, release publication, or release blog work.
+
+> For a compact orientation — when a release applies, the maintainer-authorization
+> boundary, and the version scheme — see `../releasing/SKILL.md`. This page owns
+> the full command-level checklist.
 
 Use this workflow for releases spanning:
 
@@ -80,7 +85,7 @@ changes.
 Recommended shape:
 
 ```bash
-REPO=/Users/.../lingtai
+REPO=<your-lingtai-checkout>
 BR=release-vX.Y.Z-YYYYMMDD
 WT="$REPO/.worktrees/$BR"
 git -C "$REPO" fetch origin main --tags --prune
@@ -225,6 +230,67 @@ Report to the maintainer with:
 - tests/builds run;
 - known caveats/flaky tests and reruns;
 - website blog status (drafted / previewed / published / intentionally deferred).
+
+## 6.5 Shareable HTML release log (required for every public release)
+
+Distinct from the website blog (§7): every public LingTai release must also
+produce a polished, self-contained **HTML release log** before the final human
+report. This applies to all public release surfaces — the TUI/Portal Homebrew
+release from the `lingtai` repo, the kernel `lingtai` package on PyPI, and
+first-party MCP/addon packages. Treat the HTML file as the canonical
+external-facing changelog artifact for the release: ready for a maintainer to
+send to users, investors, or collaborators without extra context from the agent
+transcript.
+
+At minimum, the HTML release log must include:
+
+- **Executive summary:** one concise paragraph saying what shipped and why it
+  matters.
+- **Release metadata:** repo, package/binary name, version, tag, release branch
+  or PR, main/release commit, release date/time, and publisher/operator.
+- **What changed:** grouped bullets for user-visible, developer-facing, and
+  docs/process changes.
+- **Validation:** tests, linters, build checks, clean-install checks,
+  Homebrew/PyPI/GitHub verification, and any intentionally skipped noisy suites.
+- **Artifacts:** links plus hashes/sizes when applicable (PyPI wheel/sdist,
+  GitHub release tarball checksum, Homebrew formula commit, downloadable assets).
+- **Operator notes and risks:** known caveats, propagation delays, rollback/retry
+  notes, compatibility warnings, or non-blocking follow-up work.
+- **Next steps:** the exact remaining user/maintainer actions, or an explicit
+  “none” if the release is complete.
+
+Format rules:
+
+- **Self-contained:** inline CSS, no remote fonts/scripts/assets, no dependency
+  on local paths.
+- **Shareable:** write for an external reader, not an agent; no secrets, no raw
+  private paths (public repo paths are fine), no internal message IDs.
+- **Verifiable:** every version/tag/hash/test count must come from commands run
+  during the release.
+- Save under the releasing repo's `reports/` directory with a descriptive name,
+  e.g. `reports/lingtai-0.10.8-release-log.html`.
+- Use `../release-html-log-template.html` as the starter skeleton when you do not
+  already have a stronger release-specific design.
+
+Before announcing completion, validate the log itself:
+
+```bash
+python - <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+path = Path('reports/<release-log>.html')
+data = path.read_text(encoding='utf-8')
+data.encode('utf-8')
+class Parser(HTMLParser):
+    pass
+Parser().feed(data)
+print('bytes:', path.stat().st_size)
+print('control chars:', sum(1 for c in data if ord(c) < 32 and c not in '\n\r\t'))
+PY
+```
+
+Send the HTML release log to the maintainer on the same channel as the release
+request, then include its path and validation result in the final release report.
 
 ## 7. Website release log / blog
 
