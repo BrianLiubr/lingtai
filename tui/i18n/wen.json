@@ -607,6 +607,7 @@
   "daemons.events": "诸事 / 器用（全量）",
   "daemons.interactions": "交互之程（全量 chat_history）",
   "daemons.result": "结果",
+  "daemons.group_id": "组号",
   "daemons.backend": "后端",
   "daemons.preset": "禀赋",
   "daemons.current_tool": "当前之器",
@@ -621,5 +622,9 @@
   "palette.goal": "导立愿",
   "cmd.goal": "导立愿——投 system notification，使当前器灵读 goal manual，导人明 objective / criteria / reminder / 取消之义，待确认后方写 .notification/goal.json",
   "props.detail_context_stats": "今识之计",
-  "props.ctrl_d_hint": "ctrl+d 察语境之详"
+  "props.ctrl_d_hint": "ctrl+d 察语境之详",
+  "daemons.finished": "终",
+  "daemons.duration": "历时",
+  "daemons.last_event": "末事",
+  "daemons.tokens": "符耗"
 }

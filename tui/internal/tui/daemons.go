@@ -75,6 +75,7 @@ type daemonsLoadMsg struct {
 type daemonSummary struct {
 	Dir          string
 	Handle       string
+	GroupID      string
 	State        string
 	Task         string
 	Backend      string
@@ -82,16 +83,28 @@ type daemonSummary struct {
 	StartedAt    string
 	UpdatedAt    string
 	CompletedAt  string
+	FinishedAt   string
 	CurrentTool  string
 	Turn         int
 	MaxTurns     int
+	ElapsedS     float64
 	Error        string
 	Events       []daemonEvent
 	Chats        []daemonChat
 	Result       string
 	EventCount   int
 	ToolCount    int
+	LastEventAt  string
+	Tokens       daemonTokenSummary
 	ModifiedTime time.Time
+}
+
+type daemonTokenSummary struct {
+	Input    int
+	Output   int
+	Thinking int
+	Cached   int
+	Calls    int
 }
 
 type daemonEvent struct {
@@ -498,6 +511,13 @@ func (m DaemonsModel) renderList(maxW int) string {
 		line := fmt.Sprintf("%s%-8s %s", marker, d.Handle, stateRendered)
 		lines = append(lines, style.Render(truncateForPanel(line, maxW)))
 		desc := d.Task
+		if d.GroupID != "" {
+			if desc != "" {
+				desc = d.GroupID + " · " + desc
+			} else {
+				desc = d.GroupID
+			}
+		}
 		if desc == "" {
 			desc = d.Backend
 		}
@@ -530,13 +550,18 @@ func (m DaemonsModel) renderDetail(maxW int) string {
 	lines = append(lines, "")
 	lines = append(lines, sectionStyle.Render(i18n.T("daemons.metadata")))
 	meta := []struct{ label, value string }{
+		{i18n.T("daemons.group_id"), d.GroupID},
 		{i18n.T("daemons.backend"), d.Backend},
 		{i18n.T("daemons.preset"), d.Preset},
 		{i18n.T("daemons.current_tool"), d.CurrentTool},
 		{i18n.T("daemons.turn"), turnText(d.Turn, d.MaxTurns)},
+		{i18n.T("daemons.duration"), daemonDuration(d)},
 		{i18n.T("daemons.started"), d.StartedAt},
 		{i18n.T("daemons.updated"), d.UpdatedAt},
 		{i18n.T("daemons.completed"), d.CompletedAt},
+		{i18n.T("daemons.finished"), d.FinishedAt},
+		{i18n.T("daemons.last_event"), d.LastEventAt},
+		{i18n.T("daemons.tokens"), daemonTokenText(d.Tokens)},
 	}
 	for _, row := range meta {
 		if strings.TrimSpace(row.value) == "" || row.value == "0" {
@@ -673,32 +698,40 @@ func readDaemonSummary(dir string) (daemonSummary, error) {
 		return item, err
 	}
 	item.Task = stringField(raw, "task")
+	item.GroupID = stringField(raw, "group_id")
 	item.State = stringField(raw, "state")
 	item.Backend = stringField(raw, "backend")
 	item.Preset = daemonPreset(raw)
 	item.StartedAt = stringField(raw, "started_at")
 	item.UpdatedAt = stringField(raw, "updated_at")
 	item.CompletedAt = stringField(raw, "completed_at")
+	item.FinishedAt = stringField(raw, "finished_at")
+	if item.CompletedAt == "" {
+		item.CompletedAt = item.FinishedAt
+	}
 	item.CurrentTool = stringField(raw, "current_tool")
 	item.Error = stringField(raw, "error")
 	item.Turn = intField(raw, "turn")
 	item.MaxTurns = intField(raw, "max_turns")
-	item.Events, item.EventCount, item.ToolCount = readDaemonEvents(filepath.Join(dir, "logs", "events.jsonl"))
+	item.ElapsedS = floatField(raw, "elapsed_s")
+	item.Events, item.EventCount, item.ToolCount, item.LastEventAt = readDaemonEvents(filepath.Join(dir, "logs", "events.jsonl"))
 	item.Chats = readDaemonChats(filepath.Join(dir, "history", "chat_history.jsonl"))
 	item.Result = readDaemonResult(filepath.Join(dir, "result.txt"))
+	item.Tokens = readDaemonTokens(filepath.Join(dir, "logs", "token_ledger.jsonl"))
 	if item.ModifiedTime.IsZero() {
-		item.ModifiedTime = newestTimestamp(item.StartedAt, item.UpdatedAt, item.CompletedAt)
+		item.ModifiedTime = newestTimestamp(item.StartedAt, item.UpdatedAt, item.CompletedAt, item.FinishedAt, item.LastEventAt)
 	}
 	return item, nil
 }
 
-func readDaemonEvents(path string) ([]daemonEvent, int, int) {
+func readDaemonEvents(path string) ([]daemonEvent, int, int, string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, 0, 0
+		return nil, 0, 0, ""
 	}
 	lines := splitLines(string(data))
 	toolCount := 0
+	lastTS := ""
 	var events []daemonEvent
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -719,9 +752,12 @@ func readDaemonEvents(path string) ([]daemonEvent, int, int) {
 		if event.Event == "tool_call" || event.Event == "tool_result" {
 			toolCount++
 		}
+		if event.TS != "" {
+			lastTS = event.TS
+		}
 		events = append(events, event)
 	}
-	return events, len(events), toolCount
+	return events, len(events), toolCount, lastTS
 }
 
 func readDaemonChats(path string) []daemonChat {
@@ -761,6 +797,30 @@ func readDaemonResult(path string) string {
 		return ""
 	}
 	return string(data)
+}
+
+func readDaemonTokens(path string) daemonTokenSummary {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return daemonTokenSummary{}
+	}
+	var total daemonTokenSummary
+	for _, line := range splitLines(string(data)) {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+			continue
+		}
+		total.Input += intField(raw, "input")
+		total.Output += intField(raw, "output")
+		total.Thinking += intField(raw, "thinking")
+		total.Cached += intField(raw, "cached")
+		total.Calls++
+	}
+	return total
 }
 
 func splitLines(s string) []string {
@@ -833,6 +893,24 @@ func intField(raw map[string]any, key string) int {
 	}
 }
 
+func floatField(raw map[string]any, key string) float64 {
+	v, ok := raw[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case string:
+		f, _ := strconv.ParseFloat(x, 64)
+		return f
+	default:
+		return 0
+	}
+}
+
 // daemonPreset derives an operator-visible preset label from daemon.json.
 // preset_name is authoritative when present; otherwise fall back through the
 // preset's provider/model, then the run's model, so the row is still useful
@@ -878,6 +956,51 @@ func turnText(turn, maxTurns int) string {
 		return fmt.Sprintf("%d", turn)
 	}
 	return fmt.Sprintf("%d/%d", turn, maxTurns)
+}
+
+func daemonDuration(d daemonSummary) string {
+	if d.ElapsedS > 0 {
+		return formatSeconds(d.ElapsedS)
+	}
+	start, ok := parseDaemonTime(d.StartedAt)
+	if !ok {
+		return ""
+	}
+	endText := firstNonEmpty(d.CompletedAt, d.FinishedAt, d.UpdatedAt, d.LastEventAt)
+	end, ok := parseDaemonTime(endText)
+	if !ok || end.Before(start) {
+		return ""
+	}
+	return formatSeconds(end.Sub(start).Seconds())
+}
+
+func daemonTokenText(t daemonTokenSummary) string {
+	if t.Calls == 0 {
+		return ""
+	}
+	total := t.Input + t.Output + t.Thinking
+	return fmt.Sprintf("%d calls / %d tokens (in %d, out %d, think %d, cached %d)", t.Calls, total, t.Input, t.Output, t.Thinking, t.Cached)
+}
+
+func parseDaemonTime(ts string) (time.Time, bool) {
+	if ts == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339, ts); err == nil {
+		return t, true
+	}
+	return time.Time{}, false
+}
+
+func formatSeconds(seconds float64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	d := time.Duration(seconds * float64(time.Second)).Round(time.Second)
+	if d < time.Second {
+		return "<1s"
+	}
+	return d.String()
 }
 
 func shortTime(ts string) string {

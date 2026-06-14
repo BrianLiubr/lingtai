@@ -607,6 +607,7 @@
   "daemons.events": "事件 / 工具调用（全量）",
   "daemons.interactions": "交互过程（全量 chat_history）",
   "daemons.result": "结果",
+  "daemons.group_id": "组 ID",
   "daemons.backend": "后端",
   "daemons.preset": "预设",
   "daemons.current_tool": "当前工具",
@@ -621,5 +622,9 @@
   "palette.goal": "引导创建 goal",
   "cmd.goal": "Goal 引导——发送 system notification，让当前 Agent 阅读 goal manual，引导人类明确 objective / criteria / reminder / 取消语义，并只在确认后创建 .notification/goal.json",
   "props.detail_context_stats": "当前上下文统计",
-  "props.ctrl_d_hint": "ctrl+d 查看上下文详情"
+  "props.ctrl_d_hint": "ctrl+d 查看上下文详情",
+  "daemons.finished": "结束",
+  "daemons.duration": "耗时",
+  "daemons.last_event": "最后事件",
+  "daemons.tokens": "用量"
 }

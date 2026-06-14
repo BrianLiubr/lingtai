@@ -607,6 +607,7 @@
   "daemons.events": "Events / tool calls (full)",
   "daemons.interactions": "Interactions (full chat_history)",
   "daemons.result": "Result",
+  "daemons.group_id": "group id",
   "daemons.backend": "backend",
   "daemons.preset": "preset",
   "daemons.current_tool": "current tool",
@@ -621,5 +622,9 @@
   "palette.goal": "Guide goal creation",
   "cmd.goal": "Goal guide — send a system notification asking the current agent to read the goal manual, guide the human through objective/criteria/reminder/cancellation semantics, and only create .notification/goal.json after confirmation",
   "props.detail_context_stats": "Current context statistics",
-  "props.ctrl_d_hint": "ctrl+d open context detail breakdown"
+  "props.ctrl_d_hint": "ctrl+d open context detail breakdown",
+  "daemons.finished": "finished",
+  "daemons.duration": "duration",
+  "daemons.last_event": "last event",
+  "daemons.tokens": "tokens"
 }

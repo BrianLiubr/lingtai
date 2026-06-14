@@ -46,9 +46,12 @@ func TestLoadDaemonSummariesReadsMetadataEventsAndChats(t *testing.T) {
 	}
 	write(filepath.Join(daemonDir, "daemon.json"), `{
 		"task":"Inspect daemon browser",
+		"group_id":"dg-20260609-010203-fedcba",
 		"state":"done",
 		"backend":"lingtai",
 		"started_at":"2026-06-09T01:02:03Z",
+		"finished_at":"2026-06-09T01:02:09Z",
+		"elapsed_s":6.25,
 		"turn":3,
 		"max_turns":8
 	}`)
@@ -58,6 +61,10 @@ func TestLoadDaemonSummariesReadsMetadataEventsAndChats(t *testing.T) {
 		`{"ts":"2026-06-09T01:02:06Z","event":"tool_result","name":"read","status":"ok"}`,
 	}, "\n"))
 	write(filepath.Join(daemonDir, "history", "chat_history.jsonl"), `{"role":"assistant","text":"task done","turn":3,"ts":"2026-06-09T01:02:07Z"}`)
+	write(filepath.Join(daemonDir, "logs", "token_ledger.jsonl"), strings.Join([]string{
+		`{"input":10,"output":4,"thinking":2,"cached":7}`,
+		`{"input":3,"output":1,"thinking":0,"cached":2}`,
+	}, "\n"))
 	write(filepath.Join(daemonDir, "result.txt"), "full result")
 
 	items, err := loadDaemonSummaries(agentDir)
@@ -74,8 +81,17 @@ func TestLoadDaemonSummariesReadsMetadataEventsAndChats(t *testing.T) {
 	if got.Task != "Inspect daemon browser" || got.Turn != 3 || got.MaxTurns != 8 {
 		t.Fatalf("metadata not parsed: %#v", got)
 	}
-	if got.EventCount != 3 || got.ToolCount != 2 || len(got.Events) != 3 {
-		t.Fatalf("events not parsed: count=%d tools=%d events=%d", got.EventCount, got.ToolCount, len(got.Events))
+	if got.GroupID != "dg-20260609-010203-fedcba" {
+		t.Fatalf("group id = %q", got.GroupID)
+	}
+	if got.FinishedAt != "2026-06-09T01:02:09Z" || got.CompletedAt != got.FinishedAt || got.ElapsedS != 6.25 {
+		t.Fatalf("terminal timing not parsed: %#v", got)
+	}
+	if got.EventCount != 3 || got.ToolCount != 2 || len(got.Events) != 3 || got.LastEventAt != "2026-06-09T01:02:06Z" {
+		t.Fatalf("events not parsed: count=%d tools=%d events=%d last=%q", got.EventCount, got.ToolCount, len(got.Events), got.LastEventAt)
+	}
+	if got.Tokens.Calls != 2 || got.Tokens.Input != 13 || got.Tokens.Output != 5 || got.Tokens.Thinking != 2 || got.Tokens.Cached != 9 {
+		t.Fatalf("tokens not parsed: %#v", got.Tokens)
 	}
 	if len(got.Chats) != 1 || got.Chats[0].Text != "task done" {
 		t.Fatalf("chats not parsed: %#v", got.Chats)
@@ -129,6 +145,7 @@ func TestRenderDetailShowsPresetNearBackend(t *testing.T) {
 	m := DaemonsModel{
 		items: []daemonSummary{{
 			Dir:     "/tmp/daemons/em-7",
+			GroupID: "dg-20260609-010203-fedcba",
 			State:   "done",
 			Backend: "lingtai",
 			Preset:  "deepseek-coder",
@@ -138,6 +155,9 @@ func TestRenderDetailShowsPresetNearBackend(t *testing.T) {
 	if !strings.Contains(out, "deepseek-coder") {
 		t.Fatalf("renderDetail missing preset; got:\n%s", out)
 	}
+	if !strings.Contains(out, "dg-20260609-010203-fedcba") {
+		t.Fatalf("renderDetail missing group id; got:\n%s", out)
+	}
 	// preset row sits in the metadata block, right after backend.
 	bi := strings.Index(out, "lingtai")
 	pi := strings.Index(out, "deepseek-coder")
@@ -146,6 +166,27 @@ func TestRenderDetailShowsPresetNearBackend(t *testing.T) {
 	}
 	if pi < bi {
 		t.Fatalf("preset rendered before backend; backend=%d preset=%d", bi, pi)
+	}
+}
+
+func TestRenderDetailShowsDaemonTimingAndTokens(t *testing.T) {
+	m := DaemonsModel{
+		items: []daemonSummary{{
+			Dir:         "/tmp/daemons/em-7",
+			State:       "done",
+			Backend:     "lingtai",
+			StartedAt:   "2026-06-09T01:02:03Z",
+			FinishedAt:  "2026-06-09T01:02:09Z",
+			ElapsedS:    6.25,
+			LastEventAt: "2026-06-09T01:02:06Z",
+			Tokens:      daemonTokenSummary{Input: 13, Output: 5, Thinking: 2, Cached: 9, Calls: 2},
+		}},
+	}
+	out := m.renderDetail(120)
+	for _, want := range []string{"duration", "6s", "finished", "2026-06-09T01:02:09Z", "last event", "2026-06-09T01:02:06Z", "tokens", "2 calls / 20 tokens"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("renderDetail missing %q; got:\n%s", want, out)
+		}
 	}
 }
 
