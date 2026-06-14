@@ -35,11 +35,11 @@ scatter_plot.*
 test/
 playground
 artifacts/
+reports/*.html
 
-# Do not ignore reports/ globally: this repo intentionally tracks selected
-# human-facing PR/release explainers under reports/. Use artifacts/ or tmp/ for
-# local-only generated output, and force-add reports only when they are durable
-# review artifacts.
+# Routine PR explainers are local-only output. Use ignored artifacts/, reports/,
+# or tmp/ and do not commit them. Only force-add report HTML when it is deliberate
+# long-term/release documentation or intentionally linked by docs.
 
 # App runtime configs (may contain secrets)
 app/email/config.json

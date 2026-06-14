@@ -39,7 +39,7 @@ git branch -d <branch-slug>
 
 Treat repo cleanup as a small, evidence-backed change, not a bulk deletion pass. This repo intentionally keeps some human-facing artifacts in git history:
 
-- `reports/` contains selected PR/release explainers and review artifacts that are handed to humans. Do not bulk-delete or globally ignore `reports/`; use `artifacts/` or `tmp/` for local-only generated output, and only add a report when it is meant to survive with the PR/release record.
+- Routine PR explainers are local-only output, not repo artifacts. Write them under ignored `artifacts/`, ignored `reports/`, `tmp/`, or an agent/worktree report workspace and hand the human the absolute path. Commit report HTML only when it is deliberate long-term/release documentation, explicitly requested by the human, or intentionally linked by repo docs; use `git add -f` for that exception and explain why in the PR.
 - `discussions/` contains agent-filed patch specs and design notes. Do not remove or rewrite them during generic cleanup; close or archive them only through an owner-approved, issue-specific decision.
 - `prompt/archive/` contains historical prompt material. Treat it as manual-review territory unless a reference check and owner approval say otherwise.
 - Local scratch directories (`tmp/`, `artifacts/`, `.worktrees/`, build bins, caches) should be ignored rather than committed. If a cleanup proposal touches durable docs/reports/discussions, split that into a separate owner-gated PR.
