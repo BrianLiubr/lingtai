@@ -377,6 +377,9 @@ func TestBuildSkillFolderEntries_DevGuideNestedReferences(t *testing.T) {
 		"- name: dev-guide-debug-troubleshoot",
 		"- name: dev-guide-security-audit",
 		"- name: dev-guide-network-governance",
+		"- name: dev-guide-runtime-self-check",
+		"- name: dev-guide-pr-review-deliverables",
+		"- name: dev-guide-skill-stewardship",
 		"Routing table",
 		"reference/architecture/SKILL.md",
 		"reference/setup/SKILL.md",
@@ -387,6 +390,9 @@ func TestBuildSkillFolderEntries_DevGuideNestedReferences(t *testing.T) {
 		"reference/debug-troubleshoot/SKILL.md",
 		"reference/security-audit/SKILL.md",
 		"reference/network-governance/SKILL.md",
+		"reference/runtime-self-check/SKILL.md",
+		"reference/pr-review-deliverables/SKILL.md",
+		"reference/skill-stewardship/SKILL.md",
 	} {
 		if !strings.Contains(rootBody, want) {
 			t.Errorf("lingtai-dev-guide root missing %q", want)
@@ -408,6 +414,9 @@ func TestBuildSkillFolderEntries_DevGuideNestedReferences(t *testing.T) {
 		"debug-troubleshoot/SKILL.md",
 		"security-audit/SKILL.md",
 		"network-governance/SKILL.md",
+		"runtime-self-check/SKILL.md",
+		"pr-review-deliverables/SKILL.md",
+		"skill-stewardship/SKILL.md",
 		"release-html-log-template.html",
 	} {
 		e, ok := labels[want]
@@ -442,6 +451,60 @@ func TestBuildSkillFolderEntries_DevGuideNestedReferences(t *testing.T) {
 	} {
 		if !strings.Contains(releaseWorkflowBody, want) {
 			t.Errorf("release workflow child missing %q", want)
+		}
+	}
+
+	// The three consolidated dev-guide references must each identify themselves
+	// as nested references and carry the de-privatization / safe-reporting
+	// guidance that the skill audit asked them to consolidate.
+	runtimeBytes, err := os.ReadFile(filepath.Join(skillDir, "reference", "runtime-self-check", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeBody := string(runtimeBytes)
+	for _, want := range []string{
+		"Nested lingtai-dev-guide reference",
+		"lingtai.__file__",
+		"editable",
+		"<REDACTED>",
+		"<your-lingtai-checkout>",
+	} {
+		if !strings.Contains(runtimeBody, want) {
+			t.Errorf("runtime-self-check child missing %q", want)
+		}
+	}
+
+	prReviewBytes, err := os.ReadFile(filepath.Join(skillDir, "reference", "pr-review-deliverables", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prReviewBody := string(prReviewBytes)
+	for _, want := range []string{
+		"Nested lingtai-dev-guide reference",
+		"git diff --check",
+		"explainer",
+		"Maintainer authorization boundaries",
+		"reference/release-workflow/SKILL.md",
+	} {
+		if !strings.Contains(prReviewBody, want) {
+			t.Errorf("pr-review-deliverables child missing %q", want)
+		}
+	}
+
+	stewardshipBytes, err := os.ReadFile(filepath.Join(skillDir, "reference", "skill-stewardship", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stewardshipBody := string(stewardshipBytes)
+	for _, want := range []string{
+		"Nested lingtai-dev-guide reference",
+		"router",
+		"nested-reference",
+		"skills-manual",
+		"de-priv",
+	} {
+		if !strings.Contains(stewardshipBody, want) {
+			t.Errorf("skill-stewardship child missing %q", want)
 		}
 	}
 }

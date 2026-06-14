@@ -4,10 +4,11 @@ description: >
   Router for contributing to the LingTai project. Use this when you are about
   to change LingTai code or docs, set up a dev environment, navigate the Go
   TUI/portal repo or Python kernel, develop MCP addons, prepare a release,
-  troubleshoot a running network, audit security, govern avatars, or prepare a
-  publication-bound release workflow. This is for developers and contributors;
+  troubleshoot a running network, audit security, govern avatars, prepare a
+  publication-bound release workflow, run a runtime self-check, get a PR
+  review-ready, or steward a new skill. This is for developers and contributors;
   for end-user lessons, use tutorial-guide.
-version: 2.3.0
+version: 2.4.0
 ---
 
 # LingTai Developer Guide
@@ -88,6 +89,30 @@ drill-down files, not standalone top-level skills.
   description: |
     Operating avatar networks over time: delegation, collaboration, durable
     knowledge, stewardship norms, and long-running network maintenance.
+- name: dev-guide-runtime-self-check
+  location: reference/runtime-self-check/SKILL.md
+  description: |
+    Developer/operator runtime self-check after refresh/checkout/preset/MCP
+    change: probe which lingtai code is running, confirm editable source and git
+    HEAD, verify the active TUI/portal binary and dev-mode symlinks, rebuild from
+    a clean worktree, inspect MCP/addon sources, and report evidence with secrets
+    redacted.
+- name: dev-guide-pr-review-deliverables
+  location: reference/pr-review-deliverables/SKILL.md
+  description: |
+    Getting a PR review-ready: readiness gates, multi-model/daemon/Claude
+    read-only review passes, self-contained local HTML explainers, PR body
+    hygiene, source-labeled deliverables with validation/syntax checks, and
+    maintainer authorization boundaries. Cross-links release-workflow for
+    release-specific publishing.
+- name: dev-guide-skill-stewardship
+  location: reference/skill-stewardship/SKILL.md
+  description: |
+    Turning experience into durable skills: when to write a skill, the
+    router-vs-nested-reference pattern, distillation (归一) and journals as skill
+    seeds, de-privatizing/parameterizing local paths and human details, a
+    lightweight pre-publish benchmark, shared-library grooming, and PR-ready skill
+    cleanup. Cross-links skills-manual for generic authoring.
 ```
 
 ## Routing table
@@ -102,6 +127,9 @@ drill-down files, not standalone top-level skills.
 | Diagnose a stuck, errored, or misbehaving LingTai network | `reference/debug-troubleshoot/SKILL.md` |
 | Audit secrets, permissions, MCP config, channels, or data exposure | `reference/security-audit/SKILL.md` |
 | Operate an avatar network over time | `reference/network-governance/SKILL.md` |
+| Verify which runtime/binary is actually running after a refresh or rebuild | `reference/runtime-self-check/SKILL.md` |
+| Get a PR review-ready: review gates, HTML explainer, PR hygiene | `reference/pr-review-deliverables/SKILL.md` |
+| Turn experience into a durable, de-privatized, PR-ready skill | `reference/skill-stewardship/SKILL.md` |
 
 ## Related skills to load instead or next
 
@@ -158,7 +186,10 @@ lingtai-dev-guide/
     ├── release-workflow/assets/release-blog-template.md
     ├── debug-troubleshoot/SKILL.md
     ├── security-audit/SKILL.md
-    └── network-governance/SKILL.md
+    ├── network-governance/SKILL.md
+    ├── runtime-self-check/SKILL.md
+    ├── pr-review-deliverables/SKILL.md
+    └── skill-stewardship/SKILL.md
 ```
 
 Now read the nested reference that matches the task, then verify against current
