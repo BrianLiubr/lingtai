@@ -241,6 +241,34 @@ sudo apt install build-essential
 </details>
 
 <details>
+<summary><b>大陆用户：命令分段、stale tap 与公式版本</b>（装不上 / 装到旧版时先看这里）</summary>
+
+**命令是几段，别搞混。** tap 名是 **两段**，公式名是 **三段**：
+
+```bash
+brew tap lingtai-ai/lingtai            # 两段：<用户>/<tap>，只加 tap
+brew install lingtai-ai/lingtai/lingtai-tui   # 三段：<用户>/<tap>/<公式>
+```
+
+直接跑三段的 `brew install` 会自动把 tap 加上，所以一般不用单独 tap。但若 tap 已经存在且是旧的，`brew install` 不会自动刷新它。
+
+**装到了旧版 / 公式过期。** tap 是本地缓存，不会自动更新。先刷新，再看公式声明的版本：
+
+```bash
+brew update                                  # 刷新所有 tap 缓存
+brew info lingtai-ai/lingtai/lingtai-tui     # 看公式版本号，和最新 release 对比
+```
+
+如果 `brew info` 显示的版本仍然落后于 [最新 release](https://github.com/Lingtai-AI/lingtai/releases)，说明本地 tap 卡住了，untap 再重新 tap 强制拉取最新公式：
+
+```bash
+brew untap lingtai-ai/lingtai
+brew install lingtai-ai/lingtai/lingtai-tui  # 重新 tap 并安装最新公式
+```
+
+</details>
+
+<details>
 <summary><b>大陆用户：用清华镜像加速 Homebrew 本身</b>（推荐先做这一步）</summary>
 
 如果 `brew install` / `brew update` 卡在拉取 `homebrew-core` 索引或下载 bottle（`ghcr.io`，国内经常不可达），先把 Homebrew 本身的源指向清华 [TUNA 镜像](https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/)，再装本项目：
@@ -257,30 +285,64 @@ source ~/.zprofile
 brew update
 ```
 
-之后正常 `brew install lingtai-ai/lingtai/lingtai-tui` 即可。这一步与下面的 Gitee tap 互相独立。
+这三个变量只影响 Homebrew 自身的索引、bottle 和 brew git 远端；本项目公式编译时用的 Go / npm 镜像是另一套，见下文。之后正常 `brew install lingtai-ai/lingtai/lingtai-tui` 即可。这一步与下面的 Gitee tap 互相独立。
 
 </details>
 
 <details>
 <summary><b>大陆用户：用 Gitee 镜像 tap</b>（brew tap 从 GitHub 拉取失败时）</summary>
 
-如果 `brew install lingtai-ai/lingtai/lingtai-tui` 卡在 `brew tap` 阶段（GnuTLS / TLS 错误），改用 Gitee 镜像的 tap：
+如果 `brew install lingtai-ai/lingtai/lingtai-tui` 卡在 `brew tap` 阶段（GnuTLS / TLS 错误，从 GitHub 拉 tap 失败），改用 Gitee 镜像的 tap：
 
 ```bash
+brew untap lingtai-ai/lingtai 2>/dev/null || true
 brew tap lingtai-ai/lingtai https://gitee.com/huangzesen1997/homebrew-lingtai.git
 brew install lingtai-ai/lingtai/lingtai-tui
 ```
 
-公式本身与 GitHub tap 一致——自动识别大陆网络，编译时使用 `goproxy.cn` + `registry.npmmirror.com`。Gitee tap 是镜像，公式更新可能比 GitHub 延迟几小时。
+公式本身与 GitHub tap 一致。Gitee tap 是镜像，公式更新可能比 GitHub 延迟几小时——如果它装出来的版本偏旧，按上面 stale tap 那段 `brew untap` 后改回 GitHub tap 即可。
 
 </details>
 
 <details>
-<summary><b>从源码编译</b>（大陆用户推荐，需要 Go 1.24+）</summary>
+<summary><b>大陆用户：编译镜像怎么选（Go 与 npm 已解耦）</b></summary>
+
+公式会**自动识别大陆网络**：用 3 秒超时探测 `proxy.golang.org`，探测失败（大陆常见）才切到大陆镜像编译。Go 模块和 npm 现在是**互相独立**的两套——Go 代理挂了不会连累 npm，反之亦然：
+
+- **Go 模块**：探测失败时用 `GOPROXY=https://goproxy.cn,direct` 与 `GOSUMDB=sum.golang.google.cn`（Google 自家的 CN 可达别名，CN 编译必需）。要手动指定，导出 `HOMEBREW_GOPROXY`。
+- **npm 仓库**：只有在 Go 探测失败 **且** 用 `npm` 客户端探测 `registry.npmmirror.com` 成功时才切过去（用 npm 而非 curl，是为了走 `npm ci` 同一套 Node/npm TLS 信任链）。探测失败就**保持 npm 默认仓库不动**。要手动指定，导出 `HOMEBREW_NPM_CONFIG_REGISTRY`。
+
+`HOMEBREW_` 前缀能让这些变量在 Homebrew 的 superenv 清洗中存活。常见场景的复制即用命令：
 
 ```bash
-# 将 VERSION 替换为最新版本号
-VERSION=v0.5.2
+# 1) 默认：什么都不用设，公式自动探测并切换。直接：
+brew install lingtai-ai/lingtai/lingtai-tui
+
+# 2) npmmirror 证书 / TLS 报错（npm 探测失败、或 npm ci 报 certificate）：
+#    最省事的办法是别动 npm 仓库，让它用默认源——公式探测失败时本来就会这样。
+#    若是手动设过 HOMEBREW_NPM_CONFIG_REGISTRY，先清掉再装：
+unset HOMEBREW_NPM_CONFIG_REGISTRY
+brew install lingtai-ai/lingtai/lingtai-tui
+#    或显式指定一个你本机能正常用的 npm 源（示例为官方源）：
+HOMEBREW_NPM_CONFIG_REGISTRY="https://registry.npmjs.org" \
+  brew install lingtai-ai/lingtai/lingtai-tui
+
+# 3) 想强制走大陆镜像（自动探测没生效时）：
+HOMEBREW_GOPROXY="https://goproxy.cn,direct" \
+HOMEBREW_NPM_CONFIG_REGISTRY="https://registry.npmmirror.com" \
+  brew install lingtai-ai/lingtai/lingtai-tui
+```
+
+如果镜像反复出问题，最稳的是直接用下面的「从源码编译」一节，自己掌控 `GOPROXY` 与 npm 源。
+
+</details>
+
+<details>
+<summary><b>从源码编译</b>（大陆用户推荐，需要 Go 1.26.1+）</summary>
+
+```bash
+# 将 VERSION 替换为最新 release 版本号；下面只是示例
+VERSION=v0.9.1
 
 # 从 Gitee 镜像下载源码（国内快）
 curl -L "https://gitee.com/huangzesen1997/lingtai/repository/archive/${VERSION}.tar.gz" -o lingtai.tar.gz

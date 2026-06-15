@@ -82,6 +82,14 @@ lingtai-tui
 
 **`brew install` fails while building.** A missing compiler toolchain is the usual cause. Install the prerequisites above, run `brew update`, and retry. If Homebrew still fails or is not available on your machine, use the [source build](#from-source) path below.
 
+**Mainland China networks.** If `brew` stalls fetching the index/bottles, the tap is stale or installs an old version, or the build can't reach `proxy.golang.org`/npm, the formula already auto-detects CN networks and falls back to `goproxy.cn` (Go modules) and — independently — `registry.npmmirror.com` (npm, only when its TLS probe passes). For the full playbook (TUNA mirror for Homebrew itself, `brew update`/`brew info`/`untap`+retap for a stale tap, Gitee tap fallback, the `HOMEBREW_GOPROXY`/`HOMEBREW_NPM_CONFIG_REGISTRY` overrides, and the npmmirror-certificate case), see the mainland-China sections in [README.zh](README.zh.md#安装详解). If GitHub tap fetch is the failing step, the quickest Homebrew fallback is usually:
+
+```bash
+brew untap lingtai-ai/lingtai 2>/dev/null || true
+brew tap lingtai-ai/lingtai https://gitee.com/huangzesen1997/homebrew-lingtai.git
+brew install lingtai-ai/lingtai/lingtai-tui
+```
+
 > The `lingtai` PyPI package exists, but it is the Python runtime the TUI manages on your behalf. Use Homebrew (or the source build below) to install and upgrade; reach for `pip` only when you are developing or diagnosing the kernel itself.
 
 The first project you create will look like this:
