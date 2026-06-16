@@ -53,18 +53,19 @@ type loginHealthMsg struct {
 // from Setup → Credentials; /login remains a compatibility shortcut into
 // the same setup subpage.
 type LoginModel struct {
-	entries       []loginEntry
-	cursor        int
-	activePreset  string
-	activeModel   string
-	orchDir       string
-	globalDir     string
-	width, height int
-	setupSubpage  bool
-	message       string
-	reenteringKey bool
-	keyInput      textarea.Model
-	codexLogging  bool
+	entries             []loginEntry
+	cursor              int
+	activePreset        string
+	activeModel         string
+	orchDir             string
+	globalDir           string
+	width, height       int
+	setupSubpage        bool
+	message             string
+	reenteringKey       bool
+	keyInput            textarea.Model
+	codexLogging        bool
+	claudeCodeAuthValid bool // detection-only; no Claude token is stored by TUI
 	// codexCancel cancels an in-flight startOAuthFlow goroutine. Set
 	// when codexLogging flips to true on Enter; cleared in
 	// CodexOAuthDoneMsg or by an explicit Del cancel.
@@ -122,9 +123,10 @@ func providerBaseURL(provider string) string {
 // and globally saved credentials.
 func NewLoginModel(orchDir, globalDir string) LoginModel {
 	m := LoginModel{
-		orchDir:        orchDir,
-		globalDir:      globalDir,
-		deleteArmedIdx: -1,
+		orchDir:             orchDir,
+		globalDir:           globalDir,
+		deleteArmedIdx:      -1,
+		claudeCodeAuthValid: claudeCodeAuthConfigured(),
 	}
 
 	// 1. Read orchestrator's active provider/model.
@@ -685,6 +687,22 @@ func (m LoginModel) View() string {
 			rowCursor = StyleAccent.Render("> ")
 		}
 		b.WriteString(rowCursor + lipgloss.NewStyle().Bold(true).Foreground(ColorAgent).Render(i18n.T("login.codex_add_row")) + "\n")
+	}
+
+	// Claude Code auth is detection-only and intentionally sits under the
+	// Codex auth row in Setup → Credentials. It confirms whether the
+	// claude-agent-sdk preset can reuse the local Claude CLI login, or
+	// tells Claude subscribers how to enable it.
+	{
+		labelStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorAgent)
+		row := "  " + labelStyle.Render(i18n.T("preset.claude_code_auth_row_label"))
+		if m.claudeCodeAuthValid {
+			okStyle := lipgloss.NewStyle().Foreground(ColorActive)
+			row += "  " + okStyle.Render("✓ "+i18n.T("preset.claude_code_auth_ok_badge"))
+		} else {
+			row += "  " + StyleFaint.Render(i18n.T("preset.claude_code_auth_login_hint"))
+		}
+		b.WriteString(row + "\n")
 	}
 
 	// Key re-entry area.

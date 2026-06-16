@@ -206,7 +206,11 @@ type FirstRunModel struct {
 		valid bool
 		email string // "" if JWT didn't carry one but tokens are valid
 	}
-	codexLoggingIn bool // true while waiting for browser callback
+	// claudeCodeAuthValid is true when the local Claude Code CLI exists
+	// and reports an authenticated session. The TUI only detects this
+	// status; it stores no Anthropic/Claude token of its own.
+	claudeCodeAuthValid bool
+	codexLoggingIn      bool // true while waiting for browser callback
 	// codexReloginArmed: true after the first Enter on an already-authed
 	// Codex 凭据 row. A second Enter starts the OAuth flow (overwriting
 	// the stored tokens); any cursor movement disarms. This two-step
@@ -457,8 +461,10 @@ func NewFirstRunModel(baseDir, globalDir string, hasPresets bool, preselectedRec
 	// bootstrapDoneMsg handler re-runs discoverRecipes once bootstrap finishes.
 	m.discoverRecipes()
 
-	// Load Codex OAuth auth status from disk
+	// Load OAuth / CLI auth status. Codex is local-file based; Claude
+	// Agent SDK uses the existing Claude Code CLI login.
 	m.refreshCodexAuth()
+	m.refreshClaudeCodeAuth()
 
 	// Default to imported recipe if detected and no explicit preselection
 	if m.importedRecipe != nil && preselectedRecipe == "" {
@@ -2374,8 +2380,24 @@ func (m FirstRunModel) View() string {
 				row += "  " + StyleFaint.Render(i18n.T("preset.codex_credential_unauthed_hint"))
 				b.WriteString(row + "\n")
 			}
-		}
 
+			// Claude Code auth detection is informational only: the
+			// claude-agent-sdk preset uses the user's existing Claude CLI
+			// login, so the TUI never stores or mutates Claude credentials.
+			{
+				label := i18n.T("preset.claude_code_auth_row_label")
+				labelStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorAgent)
+				row := "  " + labelStyle.Render(label)
+				if m.claudeCodeAuthValid {
+					okStyle := lipgloss.NewStyle().Foreground(ColorActive)
+					row += "  " + okStyle.Render("✓ "+i18n.T("preset.claude_code_auth_ok_badge"))
+				} else {
+					row += "  " + StyleFaint.Render(i18n.T("preset.claude_code_auth_login_hint"))
+				}
+				b.WriteString(row + "\n")
+			}
+
+		}
 		// Footer buttons (Back/Next) — at visibleCount+1 and +2.
 		var pickFocused wizardFooterButton
 		switch m.cursor {
@@ -3943,6 +3965,13 @@ func (m *FirstRunModel) refreshCodexAuth() {
 	} else {
 		m.codexAuth.email = ""
 	}
+}
+
+// refreshClaudeCodeAuth checks whether Claude Code is installed and logged in.
+// It is intentionally detection-only: LingTai stores no Claude credential and
+// asks users to manage that session through `claude auth login`.
+func (m *FirstRunModel) refreshClaudeCodeAuth() {
+	m.claudeCodeAuthValid = claudeCodeAuthConfigured()
 }
 
 // needsKey returns true if the env var holding this preset's API key

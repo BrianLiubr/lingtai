@@ -17,10 +17,10 @@ The preset package owns the atomic `{llm, capabilities}` bundle layer — loadin
 | `List()` | `tui/internal/preset/preset.go:209` | saved (alphabetical) + templates (canonical order); each carries `Source` |
 | `Save(p)` | `tui/internal/preset/preset.go:330` | ALWAYS to `saved/`; never templates |
 | `RefreshTemplates()` | `tui/internal/preset/preset.go:394` | rewrites `templates/` from `BuiltinPresets()`, prunes retired |
-| `BuiltinPresets()` | `tui/internal/preset/preset.go:446` | minimax, zhipu, mimo, deepseek, gemini, kimi, openrouter, codex, custom |
+| `BuiltinPresets()` | `tui/internal/preset/preset.go:469` | minimax, zhipu, mimo, deepseek, gemini, kimi, nvidia, openrouter, codex, claude-agent-sdk, custom |
 | `IsTemplate(p)` | `tui/internal/preset/preset.go:464` | canonical "is this read-only?" — prefer over `IsBuiltin(p.Name)` |
 | `RefFor(p)` | `tui/internal/preset/preset.go:473` | `~/.lingtai-tui/presets/{templates\|saved}/<name>.json` |
-| `ResolveRefsWithAuth(refs, keys, auth)` / `ResolveRefs(refs, keys)` | `tui/internal/preset/preset.go:574` | health-check: Source, Exists, HasKey for each preset path; credential validity requires configured `api_key_env` or Codex OAuth |
+| `ResolveRefsWithAuth(refs, keys, auth)` / `ResolveRefs(refs, keys)` | `tui/internal/preset/preset.go:633` | health-check: Source, Exists, HasKey for each preset path; credential validity requires configured `api_key_env`, Codex OAuth, or Claude Code CLI auth for `claude-agent-sdk` |
 | `Validate()` | `tui/internal/preset/preset.go:282` | mirrors kernel-side validation; `summary` non-empty, `tier` 1..5, `llm.provider`/`model` non-empty |
 | `//go:embed` directives | `tui/internal/preset/preset.go:16-47` | covenant, principle, procedures, templates, soul, recipe_assets, skills |
 | `CopyBundle` | `tui/internal/preset/recipe_apply.go:59` | copies `.recipe/` (replace) + recipe skill library sibling (merge) + `.lingtai/` (merge) into project |
