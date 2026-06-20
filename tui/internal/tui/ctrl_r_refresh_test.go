@@ -85,23 +85,15 @@ func TestNotificationCtrlRAndBareRReload(t *testing.T) {
 	agentDir := t.TempDir()
 	m := NewNotificationModel(agentDir)
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	// Ctrl+R reloads (new alias).
+	// Ctrl+R and bare r must not panic even when no sqlite sidecar exists.
 	if _, _ = m.Update(ctrlR()); true {
 	}
-	// Bare r still reloads (pre-existing handler preserved).
 	if _, _ = m.Update(bareR()); true {
 	}
-	// Both must observe new files written after construction.
-	notifDir := filepath.Join(agentDir, ".notification")
-	if err := os.MkdirAll(notifDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(notifDir, "system.json"), []byte(`{"hello":"world"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	reloaded, _ := m.Update(ctrlR())
-	if !strings.Contains(reloaded.View(), "system") {
-		t.Fatalf("NotificationModel ctrl+r did not pick up the new notification file; view:\n%s", reloaded.View())
+	// View must contain an actionable message about the missing sidecar.
+	view := m.View()
+	if !strings.Contains(view, "log.sqlite") {
+		t.Fatalf("NotificationModel view must mention log.sqlite when sidecar is absent; got:\n%s", view)
 	}
 }
 

@@ -1,205 +1,212 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/anthropics/lingtai-tui/i18n"
-	"github.com/anthropics/lingtai-tui/internal/fs"
+	"github.com/anthropics/lingtai-tui/internal/sqlitelog"
 )
 
-// buildNotificationEntries renders the current notification block visible to an
-// agent. The kernel consumes the same <agent>/.notification/*.json files before
-// synthesizing system(action="notification") tool-result payloads for the model.
-func buildNotificationEntries(agentDir string) []MarkdownEntry {
-	entries := []MarkdownEntry{{
-		Label:   "block",
-		Content: buildNotificationOverview(agentDir),
-	}}
-	if agentDir == "" {
-		return entries
-	}
+// NotificationModel is the /notification view: a just-in-time history browser
+// over the current agent's logs/log.sqlite. Left/right keys step through
+// notification-related events by id without preloading or caching.
+type NotificationModel struct {
+	agentDir string
+	width    int
+	height   int
 
-	notifDir := filepath.Join(agentDir, ".notification")
-	dirents, err := os.ReadDir(notifDir)
+	// current event being displayed; nil means "show index / no event selected"
+	current *sqlitelog.NotificationEvent
+
+	// total count loaded on open (best-effort; 0 when unavailable)
+	total int
+
+	// error from last query (shown inline)
+	err string
+
+	// statusLine is the one-line footer hint
+	statusLine string
+}
+
+// NewNotificationModel creates the /notification model for agentDir.
+// It immediately queries for the latest notification event.
+func NewNotificationModel(agentDir string) NotificationModel {
+	m := NotificationModel{agentDir: agentDir}
+	m.loadLatest()
+	return m
+}
+
+func (m *NotificationModel) loadLatest() {
+	if m.agentDir == "" {
+		m.err = "No agent selected."
+		return
+	}
+	if !sqlitelog.Exists(m.agentDir) {
+		m.err = "logs/log.sqlite not found. Run `lingtai-agent log rebuild <agent_dir>` to create it."
+		return
+	}
+	events, err := sqlitelog.QueryNotifications(m.agentDir, 50)
 	if err != nil {
-		return entries
+		m.err = fmt.Sprintf("query error: %v", err)
+		return
 	}
-	sort.Slice(dirents, func(i, j int) bool { return dirents[i].Name() < dirents[j].Name() })
-
-	for _, de := range dirents {
-		if de.IsDir() || filepath.Ext(de.Name()) != ".json" {
-			continue
-		}
-		path := filepath.Join(notifDir, de.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		label := strings.TrimSuffix(de.Name(), ".json")
-		entries = append(entries, MarkdownEntry{
-			Label:       label,
-			Description: path,
-			Content:     formatNotificationFileMarkdown(label, path, data),
-		})
+	m.err = ""
+	m.total = len(events)
+	if len(events) == 0 {
+		m.current = nil
+		return
 	}
-	return entries
+	// Start at newest (index 0 = highest id in DESC order).
+	m.current = &events[0]
 }
 
-func buildNotificationOverview(agentDir string) string {
-	var b strings.Builder
-	title := i18n.T("palette.notification")
-	if title == "" {
-		title = "Notification block"
+func (m *NotificationModel) stepOlder() {
+	if m.current == nil {
+		return
 	}
-	fmt.Fprintf(&b, "# %s\n\n", title)
-	if agentDir == "" {
-		b.WriteString("No current agent is selected.\n")
-		return b.String()
-	}
-	fmt.Fprintf(&b, "Agent: `%s`\n\n", filepath.Base(agentDir))
-	fmt.Fprintf(&b, "Directory: `%s`\n\n", filepath.Join(agentDir, ".notification"))
-
-	files := readNotificationFiles(agentDir)
-	if len(files) == 0 {
-		b.WriteString("No pending notification files are currently visible to this agent.\n\n")
-		b.WriteString("Notifications that were already consumed by the kernel may still appear in chat history as a structured `system(action=\"notification\")` tool-call/tool-result pair, but they are no longer present in `.notification/`.\n")
-		return b.String()
-	}
-
-	b.WriteString("This is the raw notification block the agent currently sees before producer-specific read/dismiss handling.\n\n")
-	b.WriteString("```json\n")
-	pretty, err := json.MarshalIndent(files, "", "  ")
+	prev, err := sqlitelog.QueryNotificationBefore(m.agentDir, m.current.ID)
 	if err != nil {
-		b.WriteString("[]\n")
-	} else {
-		b.Write(pretty)
-		b.WriteString("\n")
+		m.err = fmt.Sprintf("query error: %v", err)
+		return
 	}
-	b.WriteString("```\n")
-	return b.String()
+	m.err = ""
+	if prev != nil {
+		m.current = prev
+	}
 }
 
-type notificationFileBlock struct {
-	Source string          `json:"source"`
-	Path   string          `json:"path"`
-	Body   json.RawMessage `json:"body"`
-}
-
-func readNotificationFiles(agentDir string) []notificationFileBlock {
-	if agentDir == "" {
-		return nil
+func (m *NotificationModel) stepNewer() {
+	if m.current == nil {
+		return
 	}
-	notifDir := filepath.Join(agentDir, ".notification")
-	dirents, err := os.ReadDir(notifDir)
+	next, err := sqlitelog.QueryNotificationAfter(m.agentDir, m.current.ID)
 	if err != nil {
-		return nil
+		m.err = fmt.Sprintf("query error: %v", err)
+		return
 	}
-	sort.Slice(dirents, func(i, j int) bool { return dirents[i].Name() < dirents[j].Name() })
-
-	var files []notificationFileBlock
-	for _, de := range dirents {
-		if de.IsDir() || filepath.Ext(de.Name()) != ".json" {
-			continue
-		}
-		path := filepath.Join(notifDir, de.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var raw json.RawMessage
-		if json.Valid(data) {
-			raw = append(raw, data...)
-		} else {
-			raw, _ = json.Marshal(string(data))
-		}
-		files = append(files, notificationFileBlock{
-			Source: strings.TrimSuffix(de.Name(), ".json"),
-			Path:   path,
-			Body:   raw,
-		})
+	m.err = ""
+	if next != nil {
+		m.current = next
 	}
-	return files
 }
 
-func formatNotificationFileMarkdown(label, path string, data []byte) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", label)
-	fmt.Fprintf(&b, "Path: `%s`\n\n", path)
-	b.WriteString("```json\n")
-	var v any
-	if err := json.Unmarshal(data, &v); err == nil {
-		pretty, _ := json.MarshalIndent(v, "", "  ")
-		b.Write(pretty)
-		b.WriteString("\n")
-	} else {
-		b.WriteString(strings.TrimRight(string(data), "\n"))
-		b.WriteString("\n")
-	}
-	b.WriteString("```\n")
-	return b.String()
+func (m *NotificationModel) reload() {
+	m.loadLatest()
 }
 
-func notificationTitleFor(agentDir string) string {
+func (m NotificationModel) Init() tea.Cmd { return nil }
+
+func (m NotificationModel) Update(msg tea.Msg) (NotificationModel, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "left":
+			m.stepOlder()
+		case "right":
+			m.stepNewer()
+		case "ctrl+r", "r":
+			m.reload()
+		}
+	}
+	return m, nil
+}
+
+func (m NotificationModel) View() string {
+	title := notificationTitle(m.agentDir)
+	hint := StyleFaint.Render("← older  → newer  r reload  esc back")
+
+	if m.err != "" {
+		body := StyleSubtle.Render(m.err)
+		return renderNotificationPanel(title, body, hint, m.width, m.height)
+	}
+
+	if m.current == nil {
+		body := StyleSubtle.Render("No notification events found in logs/log.sqlite.")
+		return renderNotificationPanel(title, body, hint, m.width, m.height)
+	}
+
+	body := renderNotificationEvent(*m.current, m.total)
+	return renderNotificationPanel(title, body, hint, m.width, m.height)
+}
+
+func notificationTitle(agentDir string) string {
 	base := i18n.T("palette.notification")
 	if agentDir == "" {
 		return base
 	}
-	name := filepath.Base(agentDir)
-	if manifest, err := fs.ReadInitManifest(agentDir); err == nil {
-		if v, ok := manifest["nickname"].(string); ok && v != "" {
-			name = v
-		} else if v, ok := manifest["agent_name"].(string); ok && v != "" {
-			name = v
-		}
+	return fmt.Sprintf("%s — %s", base, filepath.Base(agentDir))
+}
+
+// renderNotificationEvent formats a single notification event for display.
+func renderNotificationEvent(ev sqlitelog.NotificationEvent, total int) string {
+	var b strings.Builder
+
+	// Header row
+	tsStr := ev.Time().Format(time.RFC3339)
+	typeStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorAccent)
+	idStyle := StyleFaint
+
+	fmt.Fprintf(&b, "%s  %s  %s\n",
+		typeStyle.Render(ev.Type),
+		idStyle.Render(fmt.Sprintf("id=%d", ev.ID)),
+		StyleSubtle.Render(tsStr),
+	)
+
+	if ev.Source != "" && ev.Source != "." {
+		fmt.Fprintf(&b, "%s\n", StyleFaint.Render("source: "+ev.Source))
 	}
-	return fmt.Sprintf("%s — %s", base, name)
-}
 
-// NotificationModel is the /notification view: a read-only MarkdownViewer over
-// the current agent's .notification files. Unlike /system, this intentionally
-// stays scoped to the currently selected agent because the command answers the
-// question "what notification block does this agent see right now?".
-type NotificationModel struct {
-	agentDir string
-	inner    MarkdownViewerModel
-}
+	b.WriteString("\n")
 
-func NewNotificationModel(agentDir string) NotificationModel {
-	return NotificationModel{
-		agentDir: agentDir,
-		inner:    newNotificationViewer(agentDir),
+	// Fields JSON, pretty-printed
+	pretty := sqlitelog.PrettyFields(ev)
+	b.WriteString(pretty)
+	b.WriteString("\n")
+
+	if total > 0 {
+		b.WriteString("\n")
+		b.WriteString(StyleFaint.Render(fmt.Sprintf("%d notification event(s) in history", total)))
 	}
+
+	return b.String()
 }
 
-func newNotificationViewer(agentDir string) MarkdownViewerModel {
-	viewer := NewMarkdownViewer(buildNotificationEntries(agentDir), notificationTitleFor(agentDir))
-	viewer.FooterHint = "ctrl+r reload"
-	return viewer
-}
-
-func (m NotificationModel) Init() tea.Cmd { return m.inner.Init() }
-
-func (m NotificationModel) Update(msg tea.Msg) (NotificationModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok && (key.String() == "ctrl+r" || key.String() == "r") {
-		width, height := m.inner.width, m.inner.height
-		m.inner = newNotificationViewer(m.agentDir)
-		if width > 0 && height > 0 {
-			var cmd tea.Cmd
-			m.inner, cmd = m.inner.Update(tea.WindowSizeMsg{Width: width, Height: height})
-			return m, cmd
-		}
-		return m, nil
+// renderNotificationPanel wraps content in a simple titled box.
+func renderNotificationPanel(title, body, hint string, width, height int) string {
+	if width == 0 {
+		width = 80
 	}
-	var cmd tea.Cmd
-	m.inner, cmd = m.inner.Update(msg)
-	return m, cmd
-}
+	if height == 0 {
+		height = 24
+	}
 
-func (m NotificationModel) View() string { return m.inner.View() }
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorAccent)
+	divider := StyleFaint.Render(strings.Repeat("─", max(0, width-4)))
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render(title))
+	b.WriteString("\n")
+	b.WriteString(divider)
+	b.WriteString("\n")
+	b.WriteString(body)
+
+	// Pad to height-2 so the hint sticks to the bottom.
+	lines := strings.Count(b.String(), "\n") + 1
+	pad := height - lines - 2
+	if pad > 0 {
+		b.WriteString(strings.Repeat("\n", pad))
+	}
+	b.WriteString("\n")
+	b.WriteString(hint)
+
+	return b.String()
+}

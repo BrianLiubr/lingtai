@@ -1,0 +1,249 @@
+package sqlitelog
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// makeTestDB creates a minimal sqlite3 database under a temp agent dir
+// using the system sqlite3 binary and the given extra SQL statements.
+// It skips the test if sqlite3 is unavailable.
+func makeTestDB(t *testing.T, extraSQL ...string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("requires sqlite3 binary (POSIX only)")
+	}
+	bin, err := findSQLite3()
+	if err != nil {
+		t.Skip("sqlite3 not available:", err)
+	}
+
+	agentDir := filepath.Join(t.TempDir(), "agent")
+	logsDir := filepath.Join(agentDir, "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(logsDir, "log.sqlite")
+
+	sql := `CREATE TABLE events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts REAL NOT NULL,
+		type TEXT NOT NULL,
+		agent_address TEXT,
+		fields_json TEXT NOT NULL DEFAULT '{}',
+		source_file TEXT,
+		source_offset INTEGER,
+		source_line INTEGER,
+		source_kind TEXT,
+		scope TEXT,
+		run_id TEXT,
+		inserted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+	);`
+	for _, s := range extraSQL {
+		sql += "\n" + s
+	}
+
+	out, err := exec.Command(bin, db, sql).CombinedOutput()
+	if err != nil {
+		t.Fatalf("makeTestDB: %v\n%s", err, out)
+	}
+	return agentDir
+}
+
+func TestQueryNotificationsEmpty(t *testing.T) {
+	agentDir := makeTestDB(t)
+	events, err := QueryNotifications(agentDir, 0)
+	if err != nil {
+		t.Fatalf("QueryNotifications: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events, got %d", len(events))
+	}
+}
+
+func TestQueryNotificationsReturnsMatchingRows(t *testing.T) {
+	agentDir := makeTestDB(t,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1000.0,'email_notification_published','{"count":1}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1001.0,'notification_pair_injected','{"sources":["email"],"summary":"hello"}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1002.0,'tool_call','{"name":"read"}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1003.0,'large_tool_result_notification_published','{"size":1024}');`,
+	)
+	events, err := QueryNotifications(agentDir, 0)
+	if err != nil {
+		t.Fatalf("QueryNotifications: %v", err)
+	}
+	// 3 rows match %notification% (id 1, 2, 4); id 3 is tool_call.
+	if len(events) != 3 {
+		t.Fatalf("expected 3 notification events, got %d", len(events))
+	}
+	// ORDER BY id DESC → newest first.
+	if events[0].Type != "large_tool_result_notification_published" {
+		t.Fatalf("expected newest first, got %s", events[0].Type)
+	}
+	if events[2].Type != "email_notification_published" {
+		t.Fatalf("expected oldest last, got %s", events[2].Type)
+	}
+}
+
+func TestQueryNotificationByID(t *testing.T) {
+	agentDir := makeTestDB(t,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1000.0,'notification_pair_injected','{"sources":["email"]}');`,
+	)
+	all, err := QueryNotifications(agentDir, 0)
+	if err != nil || len(all) == 0 {
+		t.Fatalf("setup: %v, events=%d", err, len(all))
+	}
+	id := all[0].ID
+	ev, err := QueryNotificationByID(agentDir, id)
+	if err != nil {
+		t.Fatalf("QueryNotificationByID: %v", err)
+	}
+	if ev == nil {
+		t.Fatal("expected event, got nil")
+	}
+	if ev.ID != id {
+		t.Fatalf("id mismatch: got %d, want %d", ev.ID, id)
+	}
+	if !strings.Contains(ev.FieldsJSON, "email") {
+		t.Fatalf("unexpected fields_json: %s", ev.FieldsJSON)
+	}
+}
+
+func TestQueryNotificationBeforeAfter(t *testing.T) {
+	agentDir := makeTestDB(t,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1000.0,'email_notification_published','{"count":1}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1001.0,'notification_pair_injected','{"sources":["email"]}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1002.0,'large_tool_result_notification_published','{"size":1024}');`,
+	)
+	all, err := QueryNotifications(agentDir, 0)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("setup: %v, events=%d", err, len(all))
+	}
+	// ORDER BY id DESC: all[0]=newest(id=3), all[1]=middle(id=2), all[2]=oldest(id=1)
+	newest, middle, oldest := all[0], all[1], all[2]
+
+	prev, err := QueryNotificationBefore(agentDir, newest.ID)
+	if err != nil {
+		t.Fatalf("QueryNotificationBefore: %v", err)
+	}
+	if prev == nil || prev.ID != middle.ID {
+		t.Fatalf("before newest: got %v, want id=%d", prev, middle.ID)
+	}
+
+	next, err := QueryNotificationAfter(agentDir, middle.ID)
+	if err != nil {
+		t.Fatalf("QueryNotificationAfter: %v", err)
+	}
+	if next == nil || next.ID != newest.ID {
+		t.Fatalf("after middle: got %v, want id=%d", next, newest.ID)
+	}
+
+	prevOfOldest, err := QueryNotificationBefore(agentDir, oldest.ID)
+	if err != nil {
+		t.Fatalf("QueryNotificationBefore oldest: %v", err)
+	}
+	if prevOfOldest != nil {
+		t.Fatalf("expected nil before oldest, got id=%d", prevOfOldest.ID)
+	}
+
+	nextOfNewest, err := QueryNotificationAfter(agentDir, newest.ID)
+	if err != nil {
+		t.Fatalf("QueryNotificationAfter newest: %v", err)
+	}
+	if nextOfNewest != nil {
+		t.Fatalf("expected nil after newest, got id=%d", nextOfNewest.ID)
+	}
+}
+
+func TestQueryNotificationsLimit(t *testing.T) {
+	agentDir := makeTestDB(t,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1000.0,'notification_pair_injected','{}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1001.0,'notification_pair_injected','{}');`,
+		`INSERT INTO events(ts,type,fields_json) VALUES(1002.0,'notification_pair_injected','{}');`,
+	)
+	events, err := QueryNotifications(agentDir, 2)
+	if err != nil {
+		t.Fatalf("QueryNotifications with limit: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events with limit=2, got %d", len(events))
+	}
+}
+
+func TestParseRows(t *testing.T) {
+	raw := "1\x1f1000.5\x1fnotification_pair_injected\x1f{\"sources\":[\"email\"]}\x1fevents.jsonl\n" +
+		"2\x1f1001.0\x1femail_notification_published\x1f{\"count\":1}\x1f"
+	events, err := parseRows(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2, got %d", len(events))
+	}
+	if events[0].ID != 1 || events[0].Ts != 1000.5 {
+		t.Fatalf("row0 mismatch: %+v", events[0])
+	}
+	if events[0].Source != "events.jsonl" {
+		t.Fatalf("source mismatch: %q", events[0].Source)
+	}
+	if events[0].Type != "notification_pair_injected" {
+		t.Fatalf("type mismatch: %q", events[0].Type)
+	}
+}
+
+func TestParseRowsEmpty(t *testing.T) {
+	events, err := parseRows("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events, got %d", len(events))
+	}
+}
+
+func TestExistsReturnsFalseWhenMissing(t *testing.T) {
+	if Exists(t.TempDir()) {
+		t.Fatal("Exists should return false for dir without log.sqlite")
+	}
+}
+
+func TestPrettyFields(t *testing.T) {
+	ev := NotificationEvent{FieldsJSON: `{"sources":["email"],"summary":"hello"}`}
+	pretty := PrettyFields(ev)
+	if !strings.Contains(pretty, "\n") {
+		t.Fatalf("expected indented JSON, got: %s", pretty)
+	}
+	if !strings.Contains(pretty, "email") {
+		t.Fatalf("expected email in output: %s", pretty)
+	}
+}
+
+func TestPrettyFieldsInvalidJSON(t *testing.T) {
+	ev := NotificationEvent{FieldsJSON: "not-json"}
+	pretty := PrettyFields(ev)
+	if pretty != "not-json" {
+		t.Fatalf("expected passthrough for invalid JSON, got: %s", pretty)
+	}
+}
+
+func TestNotificationEventTime(t *testing.T) {
+	ev := NotificationEvent{Ts: 1781577055.46409}
+	tt := ev.Time()
+	if tt.Year() != 2026 {
+		t.Fatalf("unexpected year: %d", tt.Year())
+	}
+}
+
+func TestMissingDB(t *testing.T) {
+	_, err := QueryNotifications(t.TempDir(), 0)
+	if err == nil {
+		t.Fatal("expected error for missing sqlite sidecar")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
