@@ -140,6 +140,32 @@ TUI and portal share `meta.json` but have separate migration registries. **When 
 - TUI-only migrations → add a no-op stub in the portal registry.
 - Otherwise the portal refuses to open any project the TUI has already touched.
 
+### Migration-version / rebuild incident checklist
+
+Follow this checklist whenever you hit `data version N is newer than this binary supports (M)` or suspect a version collision between open branches:
+
+1. **Check the project's stamped version:**
+   ```bash
+   python3 -c "import json,pathlib; print(json.loads(pathlib.Path('.lingtai/meta.json').read_text())['version'])"
+   ```
+
+2. **Check `CurrentVersion` in BOTH packages of the exact checkout being built:**
+   ```bash
+   grep 'const CurrentVersion' tui/internal/migrate/migrate.go portal/internal/migrate/migrate.go
+   ```
+   Both must match. A mismatch means an incomplete bump — the portal refuses any project the TUI has already touched.
+
+3. **After installing or switching dev binaries, launch and smoke-test the target project — not just `--version`.** A binary that prints the right version string may still refuse to open a project with a higher `meta.json` version.
+
+4. **Do not install a feature-branch binary that bumps migrations into shared dev projects** unless that migration PR is the intended runtime path or you can roll `main` forward to include it. A single-file `make build` on the wrong branch contaminates every project it touches.
+
+5. **If two open branches claim the same migration number:**
+   - Stop. Do not build or launch either binary into a shared project.
+   - Identify which branch (if any) has already migrated real projects to that version.
+   - Renumber and combine before any further binary migrates real projects: assign the earlier repair to the lower claimed version, add a combined catch-up at the next free slot, and have the catch-up call the earlier function idempotently. See `tui/internal/migrate/ANATOMY.md` → "Collision-recovery pattern".
+
+6. **Emergency rollback is NOT editing `meta.json` downward.** That path corrupts data that was written by the higher-version migration. The only safe recovery is to build and install a binary whose `CurrentVersion` meets or exceeds the project's current version.
+
 ## Three-locale rule
 
 Adding an i18n key means updating all three of `en.json`, `zh.json`, `wen.json` in **both** `tui/i18n/` and (where applicable) `portal/i18n/`. Missing translations show as the raw key on screen — they don't fall back.

@@ -8,7 +8,13 @@ import (
 )
 
 // CurrentVersion is the latest migration version compiled into this binary.
-const CurrentVersion = 37
+// Version history:
+//
+//	37 — preset-skills-paths (TUI-only no-op)
+//	38 — agent-init-skills-paths (shared): from PR #340
+//	39 — agent-init-context-preset-repair (shared): from PR #357
+//	     (both PRs independently claimed v38; resolved in fix/migration-version-collision-20260620)
+const CurrentVersion = 39
 
 type metaFile struct {
 	Version int `json:"version"`
@@ -60,6 +66,8 @@ var migrations = []Migration{
 	{Version: 35, Name: "remove-brief", Fn: migrateRemoveBrief},                                           // shared: strips brief.md + brief_file/brief keys after secretary removal
 	{Version: 36, Name: "sqlite-log-backfill", Fn: func(_ string) error { return nil }},                   // TUI-only: optional command-line SQLite log backfill prompt/progress
 	{Version: 37, Name: "preset-skills-paths", Fn: func(_ string) error { return nil }},                   // TUI-only: patches saved preset skill path overrides
+	{Version: 38, Name: "agent-init-skills-paths", Fn: migrateAgentInitSkillsPaths},                       // shared: restores missing skills.paths in agent init.json (PR #340)
+	{Version: 39, Name: "agent-init-context-preset-repair", Fn: migrateAgentInitContextPresetRepair},      // shared: copies legacy root context_limit into llm + rewrites stale codex preset pointers (PR #357)
 }
 
 // StampCurrent writes meta.json at CurrentVersion without running any
