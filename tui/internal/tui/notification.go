@@ -26,18 +26,14 @@ type NotificationModel struct {
 	width    int
 	height   int
 
-	// latest 10 actual-block snapshots loaded on open/reload, index 0 = newest
 	snapshots []sqlitelog.NotificationBlockSnapshot
-
 	// cursor into snapshots; -1 means no snapshots available
 	cursor int
+	err    string
 
-	// error from last query (shown inline)
-	err string
+	viewer MarkdownViewerModel
 }
 
-// NewNotificationModel creates the /notification model for agentDir.
-// It immediately loads the latest 10 notification_block_injected snapshots.
 func NewNotificationModel(agentDir string) NotificationModel {
 	m := NotificationModel{agentDir: agentDir, cursor: -1}
 	m.load()
@@ -45,26 +41,40 @@ func NewNotificationModel(agentDir string) NotificationModel {
 }
 
 func (m *NotificationModel) load() {
-	if m.agentDir == "" {
-		m.err = "No agent selected."
-		return
-	}
-	if !sqlitelog.Exists(m.agentDir) {
-		m.err = "logs/log.sqlite not found. Run `lingtai-agent log rebuild <agent_dir>` to create it."
-		return
-	}
 	snaps, err := sqlitelog.QueryNotificationBlockSnapshots(m.agentDir, 10)
 	if err != nil {
-		m.err = fmt.Sprintf("query error: %v", err)
+		m.err = err.Error()
+		m.snapshots = nil
+		m.cursor = -1
+		m.viewer = MarkdownViewerModel{}
 		return
 	}
 	m.err = ""
 	m.snapshots = snaps
 	if len(snaps) > 0 {
 		m.cursor = 0
+		m.rebuildViewer()
 	} else {
 		m.cursor = -1
+		m.viewer = MarkdownViewerModel{}
 	}
+}
+
+func (m *NotificationModel) rebuildViewer() {
+	if m.cursor < 0 || m.cursor >= len(m.snapshots) {
+		m.viewer = MarkdownViewerModel{}
+		return
+	}
+	entries := notificationMarkdownEntries(m.snapshots[m.cursor], m.cursor, len(m.snapshots))
+	viewer := NewMarkdownViewer(entries, notificationTitle(m.agentDir))
+	viewer.FooterHint = "←/→ snapshots · r reload"
+	if m.width > 0 || m.height > 0 {
+		updated, _ := viewer.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		viewer = updated
+	}
+	viewer.syncLeft()
+	viewer.syncRight()
+	m.viewer = viewer
 }
 
 func (m NotificationModel) Init() tea.Cmd { return nil }
@@ -74,6 +84,18 @@ func (m NotificationModel) Update(msg tea.Msg) (NotificationModel, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.cursor >= 0 && m.cursor < len(m.snapshots) {
+			var cmd tea.Cmd
+			m.viewer, cmd = m.viewer.Update(msg)
+			m.viewer.syncLeft()
+			m.viewer.syncRight()
+			return m, cmd
+		}
+		return m, nil
+	case MarkdownViewerCloseMsg:
+		return m, func() tea.Msg { return ViewChangeMsg{View: "mail"} }
+	case MarkdownViewerSelectMsg:
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q", "backspace":
@@ -82,39 +104,49 @@ func (m NotificationModel) Update(msg tea.Msg) (NotificationModel, tea.Cmd) {
 			// older = higher cursor index (index 0 = newest)
 			if m.cursor >= 0 && m.cursor < len(m.snapshots)-1 {
 				m.cursor++
+				m.rebuildViewer()
 			}
+			return m, nil
 		case "right":
 			// newer = lower cursor index
 			if m.cursor > 0 {
 				m.cursor--
+				m.rebuildViewer()
 			}
-		case "ctrl+r", "r":
+			return m, nil
+		case "r", "ctrl+r":
 			m.load()
+			return m, nil
 		}
+	}
+
+	if m.cursor >= 0 && m.cursor < len(m.snapshots) {
+		var cmd tea.Cmd
+		m.viewer, cmd = m.viewer.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }
 
 func (m NotificationModel) View() string {
 	title := notificationTitle(m.agentDir)
-	hint := StyleFaint.Render("← older  → newer  r reload  esc back")
-
 	if m.err != "" {
-		body := StyleSubtle.Render(m.err)
-		return renderNotificationPanel(title, body, hint, m.width, m.height)
+		body := StyleSubtle.Render("Unable to read notification blocks from logs/log.sqlite:") + "\n\n" + m.err
+		return renderNotificationPanel(title, body, "r reload  •  esc back", m.width, m.height)
 	}
-
 	if len(m.snapshots) == 0 || m.cursor < 0 {
-		body := StyleSubtle.Render(
-			"No persisted notification_block_injected snapshots found. " +
-				"This log may predate actual notification block persistence.",
-		)
-		return renderNotificationPanel(title, body, hint, m.width, m.height)
+		body := StyleFaint.Render("No persisted notification_block_injected events found yet.") + "\n\n" +
+			"Run a tool that produces a notification block, then reopen /notification."
+		return renderNotificationPanel(title, body, "r reload  •  esc back", m.width, m.height)
 	}
-
-	snap := m.snapshots[m.cursor]
-	body := renderNotificationSnapshot(snap, m.cursor, len(m.snapshots), m.blockWrapWidth())
-	return renderNotificationPanel(title, body, hint, m.width, m.height)
+	viewer := m.viewer
+	if (m.width > 0 || m.height > 0) && (viewer.width != m.width || viewer.height != m.height || viewer.rightVP.Width() == 0) {
+		updated, _ := viewer.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		viewer = updated
+		viewer.syncLeft()
+		viewer.syncRight()
+	}
+	return viewer.View()
 }
 
 func notificationTitle(agentDir string) string {
@@ -140,6 +172,227 @@ func (m NotificationModel) blockWrapWidth() int {
 // It shows the event identity, modern metadata sections, the full raw meta block,
 // global _notification_guidance, and each channel's actual payload from the
 // canonical block the agent saw.
+
+func notificationMarkdownEntries(s sqlitelog.NotificationBlockSnapshot, cursor, total int) []MarkdownEntry {
+	group := notificationSnapshotGroup(s, cursor, total)
+	entries := []MarkdownEntry{
+		{
+			Label:       "all blocks",
+			Description: "complete snapshot",
+			Group:       group,
+			Content:     notificationMarkdownAllBlocks(s, cursor, total),
+		},
+		{
+			Label:       "overview",
+			Description: "event identity and summary",
+			Group:       group,
+			Content:     notificationMarkdownOverview(s, cursor, total),
+		},
+	}
+	addMap := func(label, desc string, value map[string]interface{}) {
+		if len(value) == 0 {
+			return
+		}
+		entries = append(entries, MarkdownEntry{Label: label, Description: desc, Group: group, Content: notificationMarkdownMapBlock(s, cursor, total, label, value)})
+	}
+	addMap("_tool", "tool result metadata", s.Tool)
+	addMap("_runtime.state", "runtime state", s.RuntimeState)
+	addMap("_runtime.guidance", "runtime guidance", s.RuntimeGuidance)
+	addMap("meta", "full fields_json.meta", s.RawMeta)
+	if s.Guidance != "" {
+		entries = append(entries, MarkdownEntry{Label: "_notification_guidance", Description: "global guidance", Group: group, Content: notificationMarkdownStringBlock(s, cursor, total, "_notification_guidance", s.Guidance)})
+	}
+	if len(s.Notifications) > 0 {
+		entries = append(entries, MarkdownEntry{Label: "notifications", Description: "all channel payloads", Group: group, Content: notificationMarkdownNotificationsBlock(s, cursor, total, "notifications")})
+	}
+	channels := make([]string, 0, len(s.Notifications))
+	for ch := range s.Notifications {
+		channels = append(channels, ch)
+	}
+	sort.Strings(channels)
+	for _, ch := range channels {
+		entries = append(entries, MarkdownEntry{
+			Label:       "notifications." + ch,
+			Description: "channel payload",
+			Group:       group,
+			Content:     notificationMarkdownChannelBlock(s, cursor, total, ch, s.Notifications[ch]),
+		})
+	}
+	return entries
+}
+
+func notificationSnapshotGroup(s sqlitelog.NotificationBlockSnapshot, cursor, total int) string {
+	label := fmt.Sprintf("Snapshot %d/%d", cursor+1, total)
+	if s.Ts > 0 {
+		label += " · " + s.Time().Format("15:04 MST")
+	} else if s.Meta != nil && s.Meta.CurrentTime != "" {
+		if t := formatCurrentTimeShort(s.Meta.CurrentTime); t != "" {
+			label += " · " + t
+		}
+	}
+	return label
+}
+
+func notificationSnapshotMarkdownTitle(s sqlitelog.NotificationBlockSnapshot, cursor, total int, block string) string {
+	return fmt.Sprintf("Snapshot %d/%d — %s", cursor+1, total, block)
+}
+
+func notificationMarkdownOverview(s sqlitelog.NotificationBlockSnapshot, cursor, total int) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, "overview"))
+	fmt.Fprintf(&sb, "- **Position:** snapshot %d of %d\n", cursor+1, total)
+	fmt.Fprintf(&sb, "- **Event ID:** `%d`\n", s.ID)
+	if s.Ts > 0 {
+		fmt.Fprintf(&sb, "- **Time:** `%s`\n", s.Time().Format(time.RFC3339))
+	}
+	if s.Source != "" {
+		fmt.Fprintf(&sb, "- **Source:** `%s`\n", s.Source)
+	}
+	if s.Mode != "" {
+		fmt.Fprintf(&sb, "- **Mode:** `%s`\n", s.Mode)
+	}
+	if s.CallID != "" {
+		fmt.Fprintf(&sb, "- **Call ID:** `%s`\n", s.CallID)
+	}
+	if len(s.Sources) > 0 {
+		fmt.Fprintf(&sb, "- **Channels:** `%s`\n", strings.Join(s.Sources, "`, `"))
+	}
+	if footer := formatBlockMetaFooter(s.Meta); footer != "" {
+		fmt.Fprintf(&sb, "- **Meta summary:** %s\n", footer)
+	}
+	blocks := notificationBlockNames(s)
+	if len(blocks) > 0 {
+		sb.WriteString("\n## Available blocks\n\n")
+		for _, block := range blocks {
+			fmt.Fprintf(&sb, "- `%s`\n", block)
+		}
+	}
+	return sb.String()
+}
+
+func notificationMarkdownAllBlocks(s sqlitelog.NotificationBlockSnapshot, cursor, total int) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, "all blocks"))
+	sb.WriteString(notificationMarkdownOverview(s, cursor, total))
+	notificationWriteMarkdownMapSection(&sb, "_tool", s.Tool)
+	notificationWriteMarkdownMapSection(&sb, "_runtime.state", s.RuntimeState)
+	notificationWriteMarkdownMapSection(&sb, "_runtime.guidance", s.RuntimeGuidance)
+	notificationWriteMarkdownMapSection(&sb, "meta", s.RawMeta)
+	if s.Guidance != "" {
+		notificationWriteMarkdownStringSection(&sb, "_notification_guidance", s.Guidance)
+	}
+	notificationWriteMarkdownNotificationsSection(&sb, "notifications", s.Notifications)
+	return sb.String()
+}
+
+func notificationMarkdownMapBlock(s sqlitelog.NotificationBlockSnapshot, cursor, total int, label string, value map[string]interface{}) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, label))
+	notificationWriteMarkdownMapSection(&sb, label, value)
+	return sb.String()
+}
+
+func notificationMarkdownAnyBlock(s sqlitelog.NotificationBlockSnapshot, cursor, total int, label string, value interface{}) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, label))
+	notificationWriteMarkdownAnySection(&sb, label, value)
+	return sb.String()
+}
+
+func notificationMarkdownNotificationsBlock(s sqlitelog.NotificationBlockSnapshot, cursor, total int, label string) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, label))
+	notificationWriteMarkdownNotificationsSection(&sb, label, s.Notifications)
+	return sb.String()
+}
+
+func notificationMarkdownChannelBlock(s sqlitelog.NotificationBlockSnapshot, cursor, total int, channel, payload string) string {
+	var sb strings.Builder
+	label := "notifications." + channel
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, label))
+	fmt.Fprintf(&sb, "## `%s`\n\n", label)
+	fmt.Fprintf(&sb, "```json\n%s\n```\n\n", payload)
+	return sb.String()
+}
+
+func notificationMarkdownStringBlock(s sqlitelog.NotificationBlockSnapshot, cursor, total int, label, value string) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s\n\n", notificationSnapshotMarkdownTitle(s, cursor, total, label))
+	notificationWriteMarkdownStringSection(&sb, label, value)
+	return sb.String()
+}
+
+func notificationBlockNames(s sqlitelog.NotificationBlockSnapshot) []string {
+	blocks := []string{"all blocks", "overview"}
+	if len(s.Tool) > 0 {
+		blocks = append(blocks, "_tool")
+	}
+	if len(s.RuntimeState) > 0 {
+		blocks = append(blocks, "_runtime.state")
+	}
+	if len(s.RuntimeGuidance) > 0 {
+		blocks = append(blocks, "_runtime.guidance")
+	}
+	if len(s.RawMeta) > 0 {
+		blocks = append(blocks, "meta")
+	}
+	if s.Guidance != "" {
+		blocks = append(blocks, "_notification_guidance")
+	}
+	if len(s.Notifications) > 0 {
+		blocks = append(blocks, "notifications")
+		channels := make([]string, 0, len(s.Notifications))
+		for ch := range s.Notifications {
+			channels = append(channels, ch)
+		}
+		sort.Strings(channels)
+		for _, ch := range channels {
+			blocks = append(blocks, "notifications."+ch)
+		}
+	}
+	return blocks
+}
+
+func notificationWriteMarkdownMapSection(sb *strings.Builder, label string, value map[string]interface{}) {
+	if len(value) == 0 {
+		return
+	}
+	notificationWriteMarkdownAnySection(sb, label, value)
+}
+
+func notificationWriteMarkdownAnySection(sb *strings.Builder, label string, value interface{}) {
+	fmt.Fprintf(sb, "## `%s`\n\n", label)
+	fmt.Fprintf(sb, "```json\n%s\n```\n\n", notificationJSON(value))
+}
+
+func notificationWriteMarkdownNotificationsSection(sb *strings.Builder, label string, notifications map[string]string) {
+	if len(notifications) == 0 {
+		return
+	}
+	fmt.Fprintf(sb, "## `%s`\n\n", label)
+	channels := make([]string, 0, len(notifications))
+	for ch := range notifications {
+		channels = append(channels, ch)
+	}
+	sort.Strings(channels)
+	for _, ch := range channels {
+		fmt.Fprintf(sb, "### `%s`\n\n", ch)
+		fmt.Fprintf(sb, "```json\n%s\n```\n\n", notifications[ch])
+	}
+}
+
+func notificationWriteMarkdownStringSection(sb *strings.Builder, label, value string) {
+	fmt.Fprintf(sb, "## `%s`\n\n%s\n\n", label, value)
+}
+
+func notificationJSON(value interface{}) string {
+	b, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", value)
+	}
+	return string(b)
+}
+
 func renderNotificationSnapshot(s sqlitelog.NotificationBlockSnapshot, cursor, total, wrapWidth int) string {
 	var sb strings.Builder
 

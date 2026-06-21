@@ -142,20 +142,19 @@ func TestNotificationModelWithSnapshots(t *testing.T) {
 	m.height = 30
 	view := m.View()
 
-	// Must show channel names from payload.
-	if !strings.Contains(view, "email") {
-		t.Fatalf("View() should show channel 'email': %s", view)
+	// The visible viewport should expose the block picker in the left pane.
+	for _, want := range []string{"all blocks", "overview", "notifications.email", "notifications.system", "←/→ snapshots"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() should show sidebar/hint %q: %s", want, view)
+		}
 	}
-	if !strings.Contains(view, "system") {
-		t.Fatalf("View() should show channel 'system': %s", view)
-	}
-	// Must show global guidance.
-	if !strings.Contains(view, "kernel guidance 3") {
-		t.Fatalf("View() should show _notification_guidance: %s", view)
-	}
-	// Must show counter.
-	if !strings.Contains(view, "snapshot 1 of 3") {
-		t.Fatalf("View() should show snapshot counter: %s", view)
+
+	// Full snapshot content now lives in the scrollable MarkdownViewer entry.
+	content := notificationTestEntryContent(t, m, "all blocks")
+	for _, want := range []string{"email", "system", "kernel guidance 3", "snapshot 1 of 3"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("all blocks entry should contain %q: %s", want, content)
+		}
 	}
 }
 
@@ -328,28 +327,25 @@ func TestNotificationModelSnapshotRendersChannelContent(t *testing.T) {
 	m.width = 120
 	m.height = 40
 	view := m.View()
+	for _, want := range []string{"all blocks", "_notification_guidance", "notifications.email", "notifications.system"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() should show sidebar block %q: %s", want, view)
+		}
+	}
 
-	// Global guidance must appear
-	if !strings.Contains(view, "global kernel guidance") {
-		t.Fatalf("View() should show global _notification_guidance: %s", view)
+	content := notificationTestEntryContent(t, m, "all blocks")
+	checks := []string{
+		"global kernel guidance",
+		"email",
+		"system",
+		"synthetic_notification_pair",
+		"notif_xyz",
+		"seq 5",
 	}
-	// Channel names must appear
-	if !strings.Contains(view, "email") {
-		t.Fatalf("View() should show email channel: %s", view)
-	}
-	if !strings.Contains(view, "system") {
-		t.Fatalf("View() should show system channel: %s", view)
-	}
-	// Mode and call_id in header
-	if !strings.Contains(view, "mode=synthetic_notification_pair") {
-		t.Fatalf("View() should show mode: %s", view)
-	}
-	if !strings.Contains(view, "call_id=notif_xyz") {
-		t.Fatalf("View() should show call_id: %s", view)
-	}
-	// Meta seq
-	if !strings.Contains(view, "seq 5") {
-		t.Fatalf("View() should show meta seq: %s", view)
+	for _, want := range checks {
+		if !strings.Contains(content, want) {
+			t.Fatalf("all blocks entry should contain %q: %s", want, content)
+		}
 	}
 }
 
@@ -374,6 +370,12 @@ func TestNotificationModelSnapshotRendersToolRuntimeBlocks(t *testing.T) {
 	m.width = 120
 	m.height = 50
 	view := m.View()
+	for _, want := range []string{"all blocks", "_tool", "_runtime.state", "_runtime.guidance", "meta", "notifications.system"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() should show sidebar block %q: %s", want, view)
+		}
+	}
+	content := notificationTestEntryContent(t, m, "all blocks")
 
 	checks := []string{
 		"_tool",
@@ -402,10 +404,47 @@ func TestNotificationModelSnapshotRendersToolRuntimeBlocks(t *testing.T) {
 		"seq 9",
 	}
 	for _, want := range checks {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() should contain %q: %s", want, view)
+		if !strings.Contains(content, want) {
+			t.Fatalf("all blocks entry should contain %q: %s", want, content)
 		}
 	}
+}
+
+func TestNotificationModelMarkdownViewerScrolls(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires sqlite3 binary (POSIX only)")
+	}
+	bin, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skip("sqlite3 not in PATH")
+	}
+
+	longBody := strings.Repeat("scroll-line\n", 80)
+	fields := fmt.Sprintf(`{"mode":"active_tool_result","call_id":"notif_scroll","payload":{"_notification_guidance":%q,"notifications":{"system":{"events":[{"body":%q}]}}},"meta":{"injection_seq":1}}`, longBody, longBody)
+	agentDir := makeNotificationSnapshotDB(t, bin, []string{fields})
+
+	m := NewNotificationModel(agentDir)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 10})
+	if !strings.Contains(m.View(), "pgup/pgdn scroll") {
+		t.Fatalf("notification view should advertise scrolling: %s", m.View())
+	}
+
+	before := m.viewer.rightVP.YOffset()
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if got := m.viewer.rightVP.YOffset(); got <= before {
+		t.Fatalf("expected page down to scroll right markdown viewport, before=%d after=%d", before, got)
+	}
+}
+
+func notificationTestEntryContent(t *testing.T, m NotificationModel, label string) string {
+	t.Helper()
+	for _, entry := range m.viewer.entries {
+		if entry.Label == label {
+			return entry.Content
+		}
+	}
+	t.Fatalf("notification entry %q not found; entries=%v", label, m.viewer.entries)
+	return ""
 }
 
 // makeNotificationSnapshotDB is a test helper that inserts notification_block_injected
