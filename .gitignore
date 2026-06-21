@@ -49,10 +49,9 @@ app/web/config.json
 app/web/frontend/dist/
 node_modules/
 
-# Superpowers specs and plans (local only)
+# Local-only docs drafts. Keep tracked design docs visible to git;
+# `docs/superpowers/` and `docs/plans/` contain checked-in specs.
 docs/specs/
-docs/superpowers/
-docs/plans/
 docs/zhoubao/
 portal/docs/
 
@@ -82,8 +81,6 @@ _telegram_agent/
 
 # Graphify knowledge-graph output (regenerated locally; see docs/graphify.md)
 graphify-out/
-
-.worktrees
 
 # Local-only files: codex CLI agent guidance, ccusage screenshots
 AGENTS.md

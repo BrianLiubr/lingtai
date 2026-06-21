@@ -2,6 +2,11 @@
 /web/dist/*
 !/web/dist/.gitkeep
 /bin/
-packages/*/bin/
+packages/*/bin/*
+!/packages/tui/bin/
+!/packages/tui/bin/lingtai.js
 *.exe
 .DS_Store
+
+# Local logs emitted by TUI tests and runtime smoke runs.
+/internal/tui/logs/
