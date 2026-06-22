@@ -188,13 +188,35 @@ func NewMailModel(humanDir, humanAddr, baseDir, orchDir, orchName string, pageSi
 		dismissedInsights: make(map[string]bool),
 		sessionCache:      fs.NewSessionCache(humanDir, filepath.Dir(baseDir)),
 	}
-	// Refresh mail cache before session rebuild so mail entries are included.
-	m.cache = m.cache.Refresh()
-	// Always rebuild session.jsonl from authoritative sources on launch. This is
-	// cheap (ms-scale) and avoids the entire class of dedup bugs that come from
-	// trying to patch an existing file across restarts.
-	m.sessionCache.RebuildFromSources(m.cache, humanAddr, orchDir, m.orchDisplayName())
+	// NOTE: the mail-cache refresh and the authoritative session rebuild are
+	// intentionally NOT done here. NewMailModel runs on the synchronous launch
+	// path (NewApp, before tea.Program.Run), so doing the rebuild here parses
+	// the entire events.jsonl / soul_inquiry.jsonl / soul_flow.jsonl history
+	// before the first frame can render — seconds of frozen terminal on
+	// content-heavy projects. The rebuild is deferred to initialRebuild(), a
+	// command run by Init(), so the first frame paints immediately (empty) and
+	// the history fills in a beat later. See initialRebuild for the rationale.
 	return m
+}
+
+// initialRebuild performs the one-time authoritative session rebuild off the
+// synchronous launch path. It refreshes the mail cache, then rebuilds
+// session.jsonl from all sources (mail + events.jsonl + soul_inquiry.jsonl +
+// soul_flow.jsonl), merging and sorting chronologically. This is the heavy work
+// that used to run in NewMailModel; running it as a tea.Cmd keeps the first
+// frame instant. It returns a mailRefreshMsg so the standard refresh handler
+// builds the view from the now-populated cache. sessionCache is a pointer, so
+// the rebuild mutates the model's shared cache; the returned cache is installed
+// by the mailRefreshMsg handler.
+func (m MailModel) initialRebuild() tea.Msg {
+	// Refresh mail cache before session rebuild so mail entries are included.
+	cache := m.cache.Refresh()
+	// Always rebuild session.jsonl from authoritative sources on launch. This
+	// avoids the entire class of dedup bugs that come from trying to patch an
+	// existing file across restarts.
+	m.sessionCache.RebuildFromSources(cache, m.humanAddr, m.orchestrator, m.orchDisplayName())
+	m.cache = cache
+	return m.refreshMail()
 }
 
 func adaptiveInputMaxHeight(windowHeight int) int {
@@ -540,7 +562,12 @@ func sessionEntryToChatMessage(e fs.SessionEntry, humanAddr string) ChatMessage 
 func (m MailModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.input.Init(),
-		m.refreshMail,
+		// initialRebuild does the one-time authoritative session rebuild off the
+		// synchronous launch path (see initialRebuild and NewMailModel). It
+		// returns a mailRefreshMsg, so the standard refresh handler builds the
+		// view once history is loaded. The periodic tick below then keeps it
+		// current via the incremental Refresh path.
+		m.initialRebuild,
 		tickEvery(m.pollRate),
 		pulseTick(),
 	)
