@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,7 +56,17 @@ type NotificationMetaContext struct {
 
 // SessionCache is an append-only cache backed by session.jsonl.
 // It incrementally tails three data sources and appends new entries.
+//
+// Concurrency: the launch path defers the authoritative RebuildFromSources
+// into a Bubble Tea Cmd goroutine while the periodic mail tick keeps calling
+// Refresh on the main goroutine (see internal/tui/mail.go). Both mutate the
+// same *SessionCache, so every public entry point that touches mutable state
+// (RebuildFromSources, Refresh, IngestMail, Entries, Len) holds mu. The
+// unexported helpers (ingestMail, IngestEvents, IngestInquiries, append,
+// rewriteFile) assume the caller already holds mu and never lock themselves —
+// that keeps the lock non-reentrant and avoids deadlock.
 type SessionCache struct {
+	mu          sync.Mutex     // guards all fields below; see type doc for the locking discipline
 	path        string         // human/logs/session.jsonl
 	entries     []SessionEntry // in-memory mirror of all entries
 	lastMailTs  string         // highest mail ReceivedAt ingested (watermark for live-session dedup)
@@ -100,6 +111,9 @@ func NewSessionCache(humanDir string, projectPath string) *SessionCache {
 // sorts them chronologically, writes session.jsonl, and sets offsets to EOF
 // so subsequent Refresh calls only append new entries.
 func (sc *SessionCache) RebuildFromSources(cache MailCache, humanAddr, orchDir, orchName string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
 	// Clear any prior state and suppress file writes during ingest
 	// (we'll write the sorted result in one shot at the end).
 	sc.entries = nil
@@ -109,8 +123,9 @@ func (sc *SessionCache) RebuildFromSources(cache MailCache, humanAddr, orchDir, 
 	sc.soulVoices = make(map[string][]soulVoiceRecord)
 	sc.rebuilding = true
 
-	// Ingest everything from offset 0.
-	sc.IngestMail(cache, humanAddr, orchDir, orchName)
+	// Ingest everything from offset 0. Uses the unlocked helpers — we already
+	// hold sc.mu and the helpers must not re-lock (non-reentrant mutex).
+	sc.ingestMail(cache, humanAddr, orchDir, orchName)
 	sc.IngestEvents(orchDir)
 	sc.IngestInquiries(orchDir)
 
@@ -188,13 +203,23 @@ func (sc *SessionCache) append(entries ...SessionEntry) {
 	}
 }
 
-// Entries returns all entries in the cache.
+// Entries returns a snapshot copy of all entries in the cache. The copy is
+// deliberate: callers (e.g. buildMessages) iterate the result after this
+// returns, possibly while a concurrent RebuildFromSources mutates the backing
+// slice. Returning the live slice would race; the copy is shallow (entry
+// strings share storage) so it is cheap relative to the rebuild it guards.
 func (sc *SessionCache) Entries() []SessionEntry {
-	return sc.entries
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	out := make([]SessionEntry, len(sc.entries))
+	copy(out, sc.entries)
+	return out
 }
 
 // Len returns the total number of entries.
 func (sc *SessionCache) Len() int {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
 	return len(sc.entries)
 }
 
@@ -205,7 +230,17 @@ func (sc *SessionCache) Len() int {
 // IngestMail appends new mail messages to the session log.
 // humanAddr is the human's mail address (to determine IsFromMe).
 // orchName is the orchestrator's display name.
+//
+// Public entry point: acquires the cache lock. RebuildFromSources/Refresh,
+// which already hold the lock, call the unlocked ingestMail directly.
 func (sc *SessionCache) IngestMail(cache MailCache, humanAddr, orchDir, orchName string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.ingestMail(cache, humanAddr, orchDir, orchName)
+}
+
+// ingestMail is the unlocked body of IngestMail. The caller must hold sc.mu.
+func (sc *SessionCache) ingestMail(cache MailCache, humanAddr, orchDir, orchName string) {
 	var newEntries []SessionEntry
 	for _, msg := range cache.Messages {
 		// Skip mail at or below the watermark — already ingested either in this
@@ -281,6 +316,9 @@ func splitLast(s, sep string) string {
 // fresh consultation_fire entries can be inflated with voice text on
 // the same poll. Inflates the bodies of any soul_flow entries (new or
 // already-cached) that came back as the fallback summary.
+//
+// Lock: the caller must hold sc.mu. This is only reached from the locked
+// RebuildFromSources/Refresh paths; it does not lock itself (non-reentrant).
 func (sc *SessionCache) IngestEvents(orchDir string) {
 	if orchDir == "" {
 		return
@@ -892,6 +930,8 @@ func formatToolResultValue(value interface{}) string {
 
 // IngestInquiries tails the orchestrator's soul_inquiry.jsonl from the last-read
 // offset. Only human and insight-sourced inquiries are ingested.
+//
+// Lock: the caller must hold sc.mu (reached only from RebuildFromSources/Refresh).
 func (sc *SessionCache) IngestInquiries(orchDir string) {
 	if orchDir == "" {
 		return
@@ -935,7 +975,10 @@ func parseInquiry(line []byte) *SessionEntry {
 
 // Refresh polls all three data sources and appends new entries to the session log.
 func (sc *SessionCache) Refresh(cache MailCache, humanAddr, orchDir, orchName string) {
-	sc.IngestMail(cache, humanAddr, orchDir, orchName)
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	// Unlocked helpers — we already hold sc.mu (non-reentrant).
+	sc.ingestMail(cache, humanAddr, orchDir, orchName)
 	sc.IngestEvents(orchDir)
 	sc.IngestInquiries(orchDir)
 }
