@@ -8,7 +8,7 @@ description: >
   publication-bound release workflow, run a runtime self-check, get a PR
   review-ready, or steward a new skill. This is for developers and contributors;
   for end-user lessons, use tutorial-guide.
-version: 2.4.1
+version: 2.5.0
 ---
 
 # LingTai Developer Guide
@@ -115,6 +115,16 @@ drill-down files, not standalone top-level skills.
     seeds, de-privatizing/parameterizing local paths and human details, a
     lightweight pre-publish benchmark, shared-library grooming, and PR-ready skill
     cleanup. Cross-links skills-manual for generic authoring.
+- name: dev-guide-cache-hit-rate
+  location: reference/cache-hit-rate/SKILL.md
+  description: |
+    Compute the recent prompt-cache hit rate from token ledgers over rolling
+    windows (default 1h / 5h / 1d / 3d). Covers the provider-agnostic
+    input/cached fields in logs/token_ledger.jsonl, the formula
+    (sum(cached)/sum(input) per window), timestamp/timezone handling, the
+    daemon double-count hazard, and a read-only stdlib script
+    (scripts/cache_hit_rate.py) for an agent workdir, project root, or single
+    ledger file.
 ```
 
 ## Routing table
@@ -132,6 +142,7 @@ drill-down files, not standalone top-level skills.
 | Verify which runtime/binary is actually running after a refresh or rebuild, or why a fix that's on disk still serves stale behaviour (a long-lived service/adapter/cache that didn't rebuild) | `reference/runtime-self-check/SKILL.md` |
 | Get a PR review-ready: review gates, HTML explainer, PR hygiene | `reference/pr-review-deliverables/SKILL.md` |
 | Turn experience into a durable, de-privatized, PR-ready skill | `reference/skill-stewardship/SKILL.md` |
+| Measure the recent prompt-cache hit rate (1h/5h/1d/3d) from token ledgers | `reference/cache-hit-rate/SKILL.md` |
 
 ## Related skills to load instead or next
 
@@ -191,7 +202,10 @@ lingtai-dev-guide/
     ├── network-governance/SKILL.md
     ├── runtime-self-check/SKILL.md
     ├── pr-review-deliverables/SKILL.md
-    └── skill-stewardship/SKILL.md
+    ├── skill-stewardship/SKILL.md
+    └── cache-hit-rate/
+        ├── SKILL.md
+        └── scripts/cache_hit_rate.py
 ```
 
 Now read the nested reference that matches the task, then verify against current
