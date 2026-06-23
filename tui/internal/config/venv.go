@@ -659,6 +659,13 @@ func sourceMetadataMatchesExecutable(meta tuiInstallMetadata, exe string) bool {
 	if meta.BinDir != "" && samePath(filepath.Join(meta.BinDir, "lingtai-tui"), exe) {
 		return true
 	}
+	// install.sh also creates a "lingtai" alias symlink in bin_dir pointing at
+	// lingtai-tui. Invoking through it (e.g. `lingtai doctor`) makes
+	// os.Executable report the unresolved alias path on macOS, which matches no
+	// managed binary; treat the alias as owned by this source install.
+	if meta.BinDir != "" && samePath(filepath.Join(meta.BinDir, "lingtai"), exe) {
+		return true
+	}
 	return false
 }
 

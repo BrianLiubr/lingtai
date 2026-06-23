@@ -168,6 +168,48 @@ func TestDetectTUIInstallMethodSourceMetadataBeatsHomebrewPath(t *testing.T) {
 	}
 }
 
+func TestDetectTUIInstallMethodSourceMetadataMatchesLingtaiAlias(t *testing.T) {
+	globalDir := t.TempDir()
+	prefix := t.TempDir()
+	binDir := filepath.Join(prefix, "bin")
+	// install.sh records lingtai-tui in managed_binaries but invokes through the
+	// "lingtai" alias symlink, whose unresolved path matches no managed binary.
+	exe := filepath.Join(binDir, "lingtai")
+	writeSourceInstallMetadata(t, globalDir, prefix, binDir, []string{filepath.Join(binDir, "lingtai-tui")})
+
+	info := detectTUIInstallMethod(globalDir, exe, DoctorOptions{
+		LookupEnv: func(string) (string, bool) { return "", false },
+	})
+	if info.Method != TUIInstallMethodSource {
+		t.Fatalf("method = %s, want source; diagnostics=%+v", info.Method, info.Diagnostics)
+	}
+	if len(info.Diagnostics) != 0 {
+		t.Fatalf("alias source install should not emit diagnostics, got %+v", info.Diagnostics)
+	}
+}
+
+func TestDetectTUIInstallMethodSourceAliasInBrewBinBeatsHomebrew(t *testing.T) {
+	globalDir := t.TempDir()
+	// A source install with brew present lands in $(brew --prefix)/bin. Invoked
+	// through the "lingtai" alias, the Homebrew path heuristic would otherwise
+	// misroute this source install to `brew upgrade`.
+	binDir := "/opt/homebrew/bin"
+	exe := filepath.Join(binDir, "lingtai")
+	writeSourceInstallMetadata(t, globalDir, "/opt/homebrew", binDir, []string{filepath.Join(binDir, "lingtai-tui")})
+
+	info := detectTUIInstallMethod(globalDir, exe, DoctorOptions{
+		LookupEnv: func(key string) (string, bool) {
+			if key == "HOMEBREW_PREFIX" {
+				return "/opt/homebrew", true
+			}
+			return "", false
+		},
+	})
+	if info.Method != TUIInstallMethodSource {
+		t.Fatalf("source alias in brew bin should report source, got %s; detail=%q", info.Method, info.Detail)
+	}
+}
+
 func intelHomebrewSymlink(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
