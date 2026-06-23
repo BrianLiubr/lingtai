@@ -1611,7 +1611,7 @@ func ValidateCodexAuthOnStartup(globalDir string) string {
 	fresh, err := refreshCodexTokens(tokens.RefreshToken, tokens)
 	if err != nil {
 		if err == ErrCodexAuthRevoked {
-			return "⚠ Codex OAuth session expired — re-login via /setup → Codex 凭据"
+			return i18n.TF("codex.oauth_expired_banner", i18n.T("preset.codex_credential_section"))
 		}
 		return ""
 	}
@@ -1684,7 +1684,7 @@ func validateCodexAuthForAgents(globalDir, projectDir string) string {
 		for _, key := range []string{"default", "active"} {
 			if path, _ := presetBlock[key].(string); path != "" {
 				if strings.Contains(path, "codex") {
-					return fmt.Sprintf("⚠ Codex OAuth 未验证 — agent %q 使用 codex 预设", e.Name())
+					return i18n.TF("codex.oauth_unverified_agent", e.Name())
 				}
 			}
 		}
