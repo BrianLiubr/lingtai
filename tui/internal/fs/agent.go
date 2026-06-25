@@ -435,9 +435,9 @@ type TokenTotals struct {
 // SessionTokenStats holds token/cache statistics for one agent session window.
 type SessionTokenStats struct {
 	TokenTotals
-	HasCodexRequestMode bool
-	CodexWSFull         int64
-	CodexWSIncremental  int64
+	HasCodexTransferMode bool
+	CodexFull            int64
+	CodexIncremental     int64
 }
 
 // MoltSessionTokenStats groups API/cache statistics for the current and
@@ -557,17 +557,17 @@ func storeTokenLedgerTotals(path string, info os.FileInfo, totals TokenTotals) {
 // agent calls from historical daemon rows that were mirrored into parent
 // ledgers.
 type LedgerEntry struct {
-	TS               string `json:"ts"`
-	Input            int64  `json:"input"`
-	Output           int64  `json:"output"`
-	Thinking         int64  `json:"thinking"`
-	Cached           int64  `json:"cached"`
-	Model            string `json:"model,omitempty"`
-	Endpoint         string `json:"endpoint,omitempty"`
-	Source           string `json:"source,omitempty"`
-	EmID             string `json:"em_id,omitempty"`
-	RunID            string `json:"run_id,omitempty"`
-	CodexRequestMode string `json:"codex_request_mode,omitempty"`
+	TS                string `json:"ts"`
+	Input             int64  `json:"input"`
+	Output            int64  `json:"output"`
+	Thinking          int64  `json:"thinking"`
+	Cached            int64  `json:"cached"`
+	Model             string `json:"model,omitempty"`
+	Endpoint          string `json:"endpoint,omitempty"`
+	Source            string `json:"source,omitempty"`
+	EmID              string `json:"em_id,omitempty"`
+	RunID             string `json:"run_id,omitempty"`
+	CodexTransferMode string `json:"codex_transfer_mode,omitempty"`
 }
 
 // SumTokenLedgerByProvider reads a token_ledger.jsonl, groups main-agent
@@ -732,19 +732,15 @@ func addLedgerEntryToSessionStats(stats *SessionTokenStats, entry LedgerEntry) {
 	stats.Cached += entry.Cached
 	stats.APICalls++
 
-	switch strings.ToLower(strings.TrimSpace(entry.CodexRequestMode)) {
-	case "ws_full":
-		stats.HasCodexRequestMode = true
-		stats.CodexWSFull++
-	case "ws_incremental", "ws_increment":
-		stats.HasCodexRequestMode = true
-		stats.CodexWSIncremental++
+	switch strings.ToLower(strings.TrimSpace(entry.CodexTransferMode)) {
+	case "full":
+		stats.HasCodexTransferMode = true
+		stats.CodexFull++
+	case "incremental":
+		stats.HasCodexTransferMode = true
+		stats.CodexIncremental++
 	case "":
-		// Non-Codex or older rows.
-	default:
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(entry.CodexRequestMode)), "ws_") {
-			stats.HasCodexRequestMode = true
-		}
+		// Non-Codex rows.
 	}
 }
 

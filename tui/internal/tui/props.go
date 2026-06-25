@@ -1367,9 +1367,9 @@ func appendSessionAPIStats(lines []string, title string, stats fs.SessionTokenSt
 		valueStyle.Render(formatCacheRate(stats.Cached, stats.Input)))
 	lines = append(lines, "    "+labelStyle.Render("tokens/api_call:           ")+
 		valueStyle.Render(formatComma(avgPerCall(tokens, stats.APICalls))))
-	if stats.HasCodexRequestMode {
-		lines = append(lines, "    "+labelStyle.Render("ws_full / ws_incremental:  ")+
-			valueStyle.Render(fmt.Sprintf("%d / %d", stats.CodexWSFull, stats.CodexWSIncremental)))
+	if stats.HasCodexTransferMode {
+		lines = append(lines, "    "+labelStyle.Render("transfer full / incremental: ")+
+			valueStyle.Render(fmt.Sprintf("%d / %d", stats.CodexFull, stats.CodexIncremental)))
 	}
 	lines = append(lines, "")
 	return lines

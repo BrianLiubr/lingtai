@@ -425,15 +425,15 @@ func TestPropsHeaderShowsCtrlDHint(t *testing.T) {
 func TestPropsDetailShowsCurrentAndLastSessionAPIStats(t *testing.T) {
 	m := PropsModel{
 		detailCurrentSessionStats: fs.SessionTokenStats{
-			TokenTotals:         fs.TokenTotals{Input: 100, Output: 20, Thinking: 10, Cached: 40, APICalls: 2},
-			HasCodexRequestMode: true,
-			CodexWSFull:         1,
-			CodexWSIncremental:  1,
+			TokenTotals:          fs.TokenTotals{Input: 100, Output: 20, Thinking: 10, Cached: 40, APICalls: 2},
+			HasCodexTransferMode: true,
+			CodexFull:            1,
+			CodexIncremental:     1,
 		},
 		detailLastSessionStats: fs.SessionTokenStats{
-			TokenTotals:         fs.TokenTotals{Input: 45, Output: 5, Cached: 9, APICalls: 1},
-			HasCodexRequestMode: true,
-			CodexWSFull:         1,
+			TokenTotals:          fs.TokenTotals{Input: 45, Output: 5, Cached: 9, APICalls: 1},
+			HasCodexTransferMode: true,
+			CodexFull:            1,
 		},
 	}
 	out := ansi.Strip(m.renderDetail())
@@ -445,7 +445,7 @@ func TestPropsDetailShowsCurrentAndLastSessionAPIStats(t *testing.T) {
 		"cached / missed:           40 / 60",
 		"cache hit rate:            40.0%",
 		"tokens/api_call:           65",
-		"ws_full / ws_incremental:  1 / 1",
+		"transfer full / incremental: 1 / 1",
 		"Last session API",
 		"api_calls:                 1",
 		"tokens:                    50",
@@ -453,7 +453,7 @@ func TestPropsDetailShowsCurrentAndLastSessionAPIStats(t *testing.T) {
 		"cached / missed:           9 / 36",
 		"cache hit rate:            20.0%",
 		"tokens/api_call:           50",
-		"ws_full / ws_incremental:  1 / 0",
+		"transfer full / incremental: 1 / 0",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("renderDetail missing %q:\n%s", want, out)

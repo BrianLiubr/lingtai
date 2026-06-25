@@ -491,10 +491,10 @@ func TestSumSessionTokenLedgerSinceCountsCurrentCodexRows(t *testing.T) {
 	dir := t.TempDir()
 	ledgerPath := filepath.Join(dir, "token_ledger.jsonl")
 	writeLines(t, ledgerPath, []string{
-		`{"ts":"2026-06-20T02:59:59Z","input":100,"output":10,"cached":50,"model":"old","codex_request_mode":"ws_full"}`,
-		`{"source":"daemon","ts":"2026-06-20T03:00:01Z","input":200,"output":20,"cached":100,"model":"daemon","codex_request_mode":"ws_incremental"}`,
-		`{"ts":"2026-06-20T03:00:02Z","input":10,"output":2,"thinking":1,"cached":4,"model":"gpt-5.5","codex_request_mode":"ws_full"}`,
-		`{"source":"main","ts":"2026-06-20T03:00:03Z","input":30,"output":3,"thinking":2,"cached":15,"model":"gpt-5.5","codex_request_mode":"ws_incremental"}`,
+		`{"ts":"2026-06-20T02:59:59Z","input":100,"output":10,"cached":50,"model":"old","codex_transfer_mode":"full"}`,
+		`{"source":"daemon","ts":"2026-06-20T03:00:01Z","input":200,"output":20,"cached":100,"model":"daemon","codex_transfer_mode":"incremental"}`,
+		`{"ts":"2026-06-20T03:00:02Z","input":10,"output":2,"thinking":1,"cached":4,"model":"gpt-5.5","codex_transfer_mode":"full"}`,
+		`{"source":"main","ts":"2026-06-20T03:00:03Z","input":30,"output":3,"thinking":2,"cached":15,"model":"gpt-5.5","codex_transfer_mode":"incremental"}`,
 		`{"source":"tc_wake","ts":"2026-06-20T03:00:04Z","input":5,"output":1,"cached":0,"model":"gpt-5.5"}`,
 	})
 
@@ -506,8 +506,8 @@ func TestSumSessionTokenLedgerSinceCountsCurrentCodexRows(t *testing.T) {
 	if stats.Input != 45 || stats.Output != 6 || stats.Thinking != 3 || stats.Cached != 19 {
 		t.Fatalf("stats = %+v, want input/output/thinking/cached 45/6/3/19", stats)
 	}
-	if !stats.HasCodexRequestMode || stats.CodexWSFull != 1 || stats.CodexWSIncremental != 1 {
-		t.Fatalf("codex mode counts = has:%v full:%d incremental:%d, want true 1 1", stats.HasCodexRequestMode, stats.CodexWSFull, stats.CodexWSIncremental)
+	if !stats.HasCodexTransferMode || stats.CodexFull != 1 || stats.CodexIncremental != 1 {
+		t.Fatalf("codex mode counts = has:%v full:%d incremental:%d, want true 1 1", stats.HasCodexTransferMode, stats.CodexFull, stats.CodexIncremental)
 	}
 }
 
@@ -526,23 +526,23 @@ func TestSumMoltSessionTokenLedgerSplitsCurrentAndLastMoltWindows(t *testing.T) 
 	})
 	writeLines(t, filepath.Join(logsDir, "token_ledger.jsonl"), []string{
 		fmt.Sprintf(`{"ts":%q,"input":100,"output":10,"cached":50,"model":"before-previous"}`, previousMolt.Add(-time.Minute).Format(time.RFC3339)),
-		fmt.Sprintf(`{"ts":%q,"input":20,"output":2,"thinking":1,"cached":10,"model":"last","codex_request_mode":"ws_full"}`, previousMolt.Add(time.Minute).Format(time.RFC3339)),
-		fmt.Sprintf(`{"ts":%q,"input":30,"output":3,"thinking":2,"cached":15,"model":"current-boundary","codex_request_mode":"ws_incremental"}`, latestMolt.Format(time.RFC3339)),
+		fmt.Sprintf(`{"ts":%q,"input":20,"output":2,"thinking":1,"cached":10,"model":"last","codex_transfer_mode":"full"}`, previousMolt.Add(time.Minute).Format(time.RFC3339)),
+		fmt.Sprintf(`{"ts":%q,"input":30,"output":3,"thinking":2,"cached":15,"model":"current-boundary","codex_transfer_mode":"incremental"}`, latestMolt.Format(time.RFC3339)),
 		fmt.Sprintf(`{"source":"main","ts":%q,"input":5,"output":1,"cached":2,"model":"current"}`, latestMolt.Add(time.Minute).Format(time.RFC3339)),
-		fmt.Sprintf(`{"source":"daemon","ts":%q,"input":200,"output":20,"cached":100,"model":"daemon","codex_request_mode":"ws_full"}`, latestMolt.Add(2*time.Minute).Format(time.RFC3339)),
+		fmt.Sprintf(`{"source":"daemon","ts":%q,"input":200,"output":20,"cached":100,"model":"daemon","codex_transfer_mode":"full"}`, latestMolt.Add(2*time.Minute).Format(time.RFC3339)),
 	})
 
 	stats := SumMoltSessionTokenLedger(agentDir)
 	if stats.Current.APICalls != 2 || stats.Current.Input != 35 || stats.Current.Output != 4 || stats.Current.Thinking != 2 || stats.Current.Cached != 17 {
 		t.Fatalf("current stats = %+v, want 2 calls and 35/4/2/17 tokens", stats.Current)
 	}
-	if !stats.Current.HasCodexRequestMode || stats.Current.CodexWSFull != 0 || stats.Current.CodexWSIncremental != 1 {
+	if !stats.Current.HasCodexTransferMode || stats.Current.CodexFull != 0 || stats.Current.CodexIncremental != 1 {
 		t.Fatalf("current codex mode counts = %+v, want incremental boundary row only", stats.Current)
 	}
 	if stats.Last.APICalls != 1 || stats.Last.Input != 20 || stats.Last.Output != 2 || stats.Last.Thinking != 1 || stats.Last.Cached != 10 {
 		t.Fatalf("last stats = %+v, want 1 call and 20/2/1/10 tokens", stats.Last)
 	}
-	if !stats.Last.HasCodexRequestMode || stats.Last.CodexWSFull != 1 || stats.Last.CodexWSIncremental != 0 {
+	if !stats.Last.HasCodexTransferMode || stats.Last.CodexFull != 1 || stats.Last.CodexIncremental != 0 {
 		t.Fatalf("last codex mode counts = %+v, want full previous-session row only", stats.Last)
 	}
 }
