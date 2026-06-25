@@ -665,5 +665,11 @@
   "login.codex_add_row": "Add Codex OAuth",
   "login.codex_reauth_row": "Re-authenticate Codex OAuth",
   "login.codex_add_another_row": "Add another Codex account",
-  "login.codex_add_hint": "[Enter] login with Codex"
+  "login.codex_add_hint": "[Enter] login with Codex",
+  "login.codex_active_marker": "(active)",
+  "login.codex_set_active": "Active Codex account applied to %d saved Codex preset(s).",
+  "login.codex_no_saved_presets": "No saved Codex presets found; choose or save a Codex preset to use this account.",
+  "login.codex_invalid_account": "This Codex account is not valid — re-authenticate it ([r]) before setting it active.",
+  "login.codex_apply_failed": "Failed to apply Codex account to presets: %s",
+  "login.codex_entry_hint": "[Enter] set active  [r] re-auth  [d/Del] remove"
 }

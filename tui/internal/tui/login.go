@@ -104,6 +104,15 @@ type LoginModel struct {
 	// non-empty path means "re-authenticate this existing account" and the
 	// tokens overwrite that file.
 	codexLoginTargetPath string
+	// activeCodexPath is the absolute token-file path of the Codex account all
+	// saved Codex presets currently agree on (derived via activeCodexAuthPath).
+	// Empty when saved Codex presets disagree or none exist. Used only to mark
+	// the (active) row in the list; recomputed after an apply.
+	activeCodexPath string
+	// messageOK styles `message` as a success (active color) rather than the
+	// default error red. Set when reporting a completed set-active apply; reset
+	// implicitly whenever a new message is assigned through the error paths.
+	messageOK bool
 }
 
 // NewSetupCredentialsModel opens the credential manager as a /setup subpage.
@@ -209,6 +218,12 @@ func NewLoginModel(orchDir, globalDir string) LoginModel {
 	ta.CharLimit = 512
 	ta.Placeholder = "paste API key..."
 	m.keyInput = ta
+
+	// 5. Derive which Codex account is currently active (all saved Codex
+	// presets agree on it) so its row can be marked. Empty when mixed/none.
+	if p, ok := activeCodexAuthPath(globalDir); ok {
+		m.activeCodexPath = p
+	}
 
 	return m
 }
@@ -340,7 +355,7 @@ func (m LoginModel) Update(msg tea.Msg) (LoginModel, tea.Cmd) {
 
 		// Resolve the destination token file. A re-auth targets the
 		// existing account's file (codexLoginTargetPath set when the user
-		// pressed Enter on that account); an "add account" leaves the target
+		// pressed `r` on that account); an "add account" leaves the target
 		// empty so we derive a fresh per-account path from the email — unless
 		// no account exists yet, in which case the first account seeds the
 		// legacy file so existing presets keep working without churn.
@@ -446,6 +461,49 @@ func (m LoginModel) startCodexLogin(deviceCode bool) (LoginModel, tea.Cmd) {
 	return m, waitCodexOAuthMsg(m.codexSession)
 }
 
+// setActiveCodexAccount makes the given Codex OAuth entry the active account and
+// applies it to every saved Codex preset (rewriting their codex_auth_path). This
+// is the common action — the user picks the ChatGPT account all their Codex work
+// should run on. An INVALID account (token file unparseable / no refresh_token)
+// is refused with a hint so a dead account can't be bound everywhere. The status
+// message reports how many saved presets were bound (or that there were none).
+// activeCodexPath is recomputed so the (active) marker tracks the new binding.
+func (m LoginModel) setActiveCodexAccount(entry loginEntry) LoginModel {
+	// Gate on validity: prefer the live health result, but a freshly-listed
+	// account may still be loginChecking — fall back to parsing the token file.
+	valid := entry.Status == loginValid
+	if entry.Status == loginChecking {
+		valid = codexAuthPathValid(entry.CodexPath)
+	}
+	if !valid {
+		m.message = i18n.T("login.codex_invalid_account")
+		m.messageOK = false
+		return m
+	}
+
+	applied, err := applyActiveCodexAccount(m.globalDir, entry.CodexPath)
+	if err != nil {
+		m.message = fmt.Sprintf(i18n.T("login.codex_apply_failed"), err.Error())
+		m.messageOK = false
+		return m
+	}
+	if applied == 0 {
+		m.message = i18n.T("login.codex_no_saved_presets")
+	} else {
+		m.message = fmt.Sprintf(i18n.T("login.codex_set_active"), applied)
+	}
+	// Neither outcome is an error; style both as confirmation feedback.
+	m.messageOK = true
+	// Recompute the active account from the now-rewritten saved presets so the
+	// (active) marker reflects this selection immediately.
+	if p, ok := activeCodexAuthPath(m.globalDir); ok {
+		m.activeCodexPath = p
+	} else {
+		m.activeCodexPath = ""
+	}
+	return m
+}
+
 // codexForceLogin reports whether the in-flight browser OAuth must force the
 // OpenAI login page (prompt=login) instead of reusing the existing ChatGPT
 // session. True only when ADDING a new account (empty codexLoginTargetPath)
@@ -477,7 +535,7 @@ func (m *LoginModel) hasCodexOAuth() bool {
 // ChatGPT account: with no account it adds the first credential; with one
 // or more it adds an additional account (a separate token file under
 // codex-auth/). Re-authenticating an existing account is a separate action
-// (Enter on that account's entry). Previously this row hid itself once a
+// (`r` on that account's entry). Previously this row hid itself once a
 // Codex entry existed AND only one token file could exist; both limits are
 // removed — a Codex login must always be reachable and accounts coexist.
 func (m *LoginModel) virtualAddCodexRow() bool {
@@ -520,12 +578,15 @@ func (m LoginModel) updateNormal(msg tea.KeyPressMsg) (LoginModel, tea.Cmd) {
 		}
 	}
 
-	// Any key other than a second logout/delete trigger disarms the
-	// two-press confirmation. Backspace, "delete", and "r" all
-	// arm/confirm; everything else clears the arm. Up/Down still need
-	// to clear so cursor movement invalidates a stale arm.
+	// Any key other than a second delete trigger disarms the two-press
+	// confirmation. "d", "delete", and "backspace" all arm/confirm; everything
+	// else (including "r", now re-auth) clears the arm. Up/Down still need to
+	// clear so cursor movement invalidates a stale arm.
 	key := msg.String()
-	if m.deleteArmedIdx != -1 && key != "delete" && key != "backspace" && key != "r" {
+	// A fresh key interaction: drop the success styling from any prior status
+	// so a stale "set active" green never bleeds onto a later error message.
+	m.messageOK = false
+	if m.deleteArmedIdx != -1 && key != "d" && key != "delete" && key != "backspace" {
 		m.deleteArmedIdx = -1
 		m.message = ""
 	}
@@ -577,12 +638,9 @@ func (m LoginModel) updateNormal(msg tea.KeyPressMsg) (LoginModel, tea.Cmd) {
 		if m.cursor >= 0 && m.cursor < len(m.entries) {
 			entry := m.entries[m.cursor]
 			if entry.IsOAuth {
-				// Re-authenticate THIS account: tokens overwrite its own file.
-				m.codexLoginTargetPath = entry.CodexPath
-				m.codexChoosingMethod = true
-				m.codexMethodCursor = 0
-				m.message = ""
-				return m, nil
+				// Enter SETS THIS ACCOUNT ACTIVE and applies it to all saved
+				// Codex presets (the common action). Re-auth moved to [r].
+				return m.setActiveCodexAccount(entry), nil
 			}
 			// API key entry — show re-entry textarea.
 			m.reenteringKey = true
@@ -590,12 +648,26 @@ func (m LoginModel) updateNormal(msg tea.KeyPressMsg) (LoginModel, tea.Cmd) {
 			m.keyInput.Focus()
 			return m, nil
 		}
-	case "delete", "backspace", "r":
+	case "r":
+		// Re-authenticate the selected Codex account: re-run OAuth and
+		// overwrite that account's own token file. This is the action Enter
+		// used to perform; Enter now sets the account active instead. A non-
+		// OAuth (API-key) entry or the virtual add row ignore `r`.
+		if m.cursor >= 0 && m.cursor < len(m.entries) && !m.cursorOnVirtualRow() {
+			entry := m.entries[m.cursor]
+			if entry.IsOAuth {
+				m.codexLoginTargetPath = entry.CodexPath
+				m.codexChoosingMethod = true
+				m.codexMethodCursor = 0
+				m.message = ""
+			}
+		}
+		return m, nil
+	case "d", "delete", "backspace":
 		// Remove credential. For an in-flight OAuth, Del cancels the
 		// flow (matching the firstrun behavior). For a stored entry,
-		// two presses are required to confirm. `r` is also bound here
-		// so the long-standing codex.oauth_logout_hint ("[r] logout")
-		// i18n string is no longer vestigial.
+		// two presses are required to confirm. `d` joins Del/Backspace as a
+		// letter-key logout shortcut; `r` is now re-auth, not delete.
 		if m.codexLogging && m.codexCancel != nil {
 			m.codexCancel()
 			m.codexCancel = nil
@@ -774,6 +846,10 @@ func (m LoginModel) View() string {
 			}
 
 			line := fmt.Sprintf("%s %s %s %s", cursor, icon, name, entry.Display)
+			// Mark the Codex account all saved Codex presets currently point at.
+			if entry.Provider == "codex" && m.activeCodexPath != "" && entry.CodexPath == m.activeCodexPath {
+				line += " " + lipgloss.NewStyle().Foreground(ColorActive).Render(i18n.T("login.codex_active_marker"))
+			}
 			if entry.Detail != "" {
 				var detailStyle lipgloss.Style
 				switch entry.Status {
@@ -793,7 +869,7 @@ func (m LoginModel) View() string {
 	// Virtual Codex OAuth row — always shown so a Codex login is always
 	// reachable. It ADDS a new account: with no account it reads "Add Codex
 	// OAuth"; with one or more it reads "Add another Codex account". To
-	// re-authenticate an existing account the user presses Enter on that
+	// re-authenticate an existing account the user presses `r` on that
 	// account's own entry above (which targets that account's token file).
 	if m.virtualAddCodexRow() {
 		rowCursor := "  "
@@ -845,21 +921,31 @@ func (m LoginModel) View() string {
 		}
 	}
 
-	// Transient message.
+	// Transient message. Success outcomes (active account applied) render in the
+	// active color; errors and hints keep the alert color.
 	if m.message != "" {
-		b.WriteString("\n  " + lipgloss.NewStyle().Foreground(ColorStuck).Render(m.message) + "\n")
+		msgColor := ColorStuck
+		if m.messageOK {
+			msgColor = ColorActive
+		}
+		b.WriteString("\n  " + lipgloss.NewStyle().Foreground(msgColor).Render(m.message) + "\n")
 	}
 
-	// Bottom hints.
+	// Bottom hints. Context-sensitive: a Codex OAuth row offers set-active /
+	// re-auth / remove; the virtual add row and the empty list offer the add
+	// affordance. A non-Codex API-key row keeps the generic remove hint.
 	b.WriteString("\n" + strings.Repeat("─", m.width) + "\n")
 	var footerHint string
-	if len(m.entries) == 0 {
-		// No stored credentials yet — only the add affordance applies.
+	switch {
+	case len(m.entries) == 0:
 		footerHint = i18n.T("login.codex_add_hint") + "  [Esc] back"
-	} else {
-		// Entries plus the always-present Codex login row: Enter on an
-		// entry re-authenticates, Enter on the Codex row adds/re-auths.
-		footerHint = "[Enter] re-authenticate / " + i18n.T("login.codex_add_hint") + "  [Del] " + i18n.T("login.remove_hint") + "  [Esc] back"
+	case m.cursorOnVirtualRow():
+		footerHint = i18n.T("login.codex_add_hint") + "  [Esc] back"
+	case m.cursor >= 0 && m.cursor < len(m.entries) && m.entries[m.cursor].IsOAuth:
+		// Enter sets active, r re-auths, Del/d removes (see updateNormal).
+		footerHint = i18n.T("login.codex_entry_hint") + "  [Esc] back"
+	default:
+		footerHint = "[Enter] " + i18n.T("login.reauth") + "  [Del] " + i18n.T("login.remove_hint") + "  [Esc] back"
 	}
 	b.WriteString(StyleFaint.Render("  "+footerHint) + "\n")
 

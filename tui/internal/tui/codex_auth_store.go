@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/anthropics/lingtai-tui/internal/preset"
 )
 
 // Codex OAuth credential storage.
@@ -256,4 +258,138 @@ func hasAnyCodexAccount(globalDir string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Active Codex account: apply one chosen account to all SAVED Codex presets.
+//
+// "Active" is a TUI convenience, not load balancing (that's lingtai-api-pool):
+// the TUI binds every user-owned Codex preset to one chosen ChatGPT account by
+// rewriting each preset's non-secret manifest.llm.codex_auth_path. Templates are
+// never touched (RefreshTemplates owns them and would overwrite edits anyway);
+// only presets under presets/saved/ are user territory. The preset package must
+// not import tui, so these helpers live here (they need codexAuthRefForPath) and
+// call preset.List/preset.Save.
+// ---------------------------------------------------------------------------
+
+// presetLLM returns the manifest.llm map for a preset, or nil when absent.
+func presetLLM(p preset.Preset) map[string]interface{} {
+	llm, _ := p.Manifest["llm"].(map[string]interface{})
+	return llm
+}
+
+// isSavedCodexPreset reports whether p is a user-owned (saved/) preset bound to
+// the codex provider — the only presets the active-account apply rewrites.
+func isSavedCodexPreset(p preset.Preset) bool {
+	if p.Source != preset.SourceSaved {
+		return false
+	}
+	llm := presetLLM(p)
+	if llm == nil {
+		return false
+	}
+	prov, _ := llm["provider"].(string)
+	return prov == "codex"
+}
+
+// presetCodexAuthRef returns the preset's current manifest.llm.codex_auth_path
+// (trimmed), or "" when unset — the legacy/default fallback.
+func presetCodexAuthRef(p preset.Preset) string {
+	llm := presetLLM(p)
+	if llm == nil {
+		return ""
+	}
+	ref, _ := llm["codex_auth_path"].(string)
+	return strings.TrimSpace(ref)
+}
+
+// setPresetCodexAuthRef writes ref into the preset's manifest.llm.codex_auth_path.
+// An empty ref DELETES the key so a legacy/default binding serializes clean and
+// matches the shipped codex template (which carries no codex_auth_path). Reports
+// whether the stored value actually changed, so callers can skip a no-op Save.
+func setPresetCodexAuthRef(p *preset.Preset, ref string) bool {
+	llm := presetLLM(*p)
+	if llm == nil {
+		// A codex preset always has an llm map in practice; guard anyway.
+		llm = map[string]interface{}{}
+		if p.Manifest == nil {
+			p.Manifest = map[string]interface{}{}
+		}
+		p.Manifest["llm"] = llm
+	}
+	cur, has := llm["codex_auth_path"]
+	curStr, _ := cur.(string)
+	if ref == "" {
+		if !has {
+			return false
+		}
+		delete(llm, "codex_auth_path")
+		return true
+	}
+	if has && curStr == ref {
+		return false
+	}
+	llm["codex_auth_path"] = ref
+	return true
+}
+
+// applyActiveCodexAccount applies absPath to every SAVED Codex preset's
+// codex_auth_path, and returns how many presets are now bound to that account.
+// The legacy account maps to "" (key removed) so saved presets fall back to the
+// legacy file. Templates and non-Codex presets are left untouched. A preset
+// already pointing at the chosen account is counted but not rewritten on disk
+// (no-op Save avoided). The first Save error aborts and is returned.
+func applyActiveCodexAccount(globalDir, absPath string) (int, error) {
+	ref := codexAuthRefForPath(globalDir, absPath)
+	presets, err := preset.List()
+	if err != nil {
+		return 0, err
+	}
+	applied := 0
+	for _, p := range presets {
+		if !isSavedCodexPreset(p) {
+			continue
+		}
+		applied++ // this preset is now bound to the active account
+		if !setPresetCodexAuthRef(&p, ref) {
+			continue // already on the active account; nothing to write
+		}
+		if err := preset.Save(p); err != nil {
+			return applied, err
+		}
+	}
+	return applied, nil
+}
+
+// activeCodexAuthPath derives the currently-active Codex account from the saved
+// Codex presets: when they ALL reference the same account it returns that
+// account's absolute token-file path with ok=true; when they disagree or none
+// exist it returns ("", false). Used to mark the active row in the credentials
+// list. Comparison is on the resolved absolute path so "~/"-prefixed, absolute,
+// and empty(=legacy) refs that name the same file collapse together.
+func activeCodexAuthPath(globalDir string) (string, bool) {
+	presets, err := preset.List()
+	if err != nil {
+		return "", false
+	}
+	var resolved string
+	seen := false
+	for _, p := range presets {
+		if !isSavedCodexPreset(p) {
+			continue
+		}
+		path := resolveCodexAuthPath(globalDir, presetCodexAuthRef(p))
+		if !seen {
+			resolved = path
+			seen = true
+			continue
+		}
+		if path != resolved {
+			return "", false // mixed bindings — no single active account
+		}
+	}
+	if !seen {
+		return "", false
+	}
+	return resolved, true
 }

@@ -66,37 +66,10 @@ func TestLoginModel_DelTwoPressDeletesCodex(t *testing.T) {
 	}
 }
 
-// TestLoginModel_RTwoPressDeletesCodex verifies the legacy [r] logout
-// shortcut follows the same two-press confirmation path as Del/Backspace.
-func TestLoginModel_RTwoPressDeletesCodex(t *testing.T) {
-	dir := t.TempDir()
-	authPath := seedLoginCodexAuth(t, dir)
-
-	m := NewLoginModel("", dir)
-	if len(m.entries) != 1 || m.entries[0].Provider != "codex" {
-		t.Fatalf("expected single codex entry; got %#v", m.entries)
-	}
-
-	r := tea.KeyPressMsg{Text: "r", Code: 'r'}
-	m, _ = m.Update(r)
-	if m.deleteArmedIdx != 0 {
-		t.Errorf("first r should arm deleteArmedIdx=0; got %d", m.deleteArmedIdx)
-	}
-	if _, err := os.Stat(authPath); err != nil {
-		t.Errorf("first r must not delete the file: %v", err)
-	}
-
-	m, _ = m.Update(r)
-	if m.deleteArmedIdx != -1 {
-		t.Errorf("deleteArmedIdx should reset to -1 after delete; got %d", m.deleteArmedIdx)
-	}
-	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
-		t.Errorf("codex-auth.json should be removed by r shortcut; stat err: %v", err)
-	}
-	if len(m.entries) != 0 {
-		t.Errorf("entry should be dropped; entries=%#v", m.entries)
-	}
-}
+// (The legacy [r] two-press logout shortcut was removed: r now re-authenticates
+// the selected Codex account. Deletion is d / Del / Backspace. New coverage:
+// TestLoginModel_DTwoPressDeletesCodex, TestLoginModel_RReauthsExistingAccount,
+// and TestLoginModel_RDoesNotDelete in login_active_test.go.)
 
 // TestLoginModel_DelDisarmedByMovement: pressing arrow keys after a
 // first Del must disarm the confirmation so a later Del on a different
@@ -141,21 +114,27 @@ func TestLoginModel_LateOAuthDoneIgnoredAfterCancel(t *testing.T) {
 	}
 }
 
-func TestLoginModel_CodexEnterShowsMethodChooser(t *testing.T) {
-	dir := t.TempDir()
-	seedLoginCodexAuth(t, dir)
+// TestLoginModel_CodexRReauthShowsMethodChooser verifies the method chooser is
+// now reached via r (re-auth) on an existing Codex row — Enter sets the account
+// active instead (see TestLoginModel_EnterOnCodexSetsActiveAppliesToSavedPresets).
+// HOME is isolated so the no-op apply that r does NOT trigger can't touch real
+// presets, and seedLoginCodexAuth writes the legacy file under the temp home.
+func TestLoginModel_CodexRReauthShowsMethodChooser(t *testing.T) {
+	_, globalDir := withTempCodexHome(t)
+	seedLoginCodexAuth(t, globalDir)
 
-	m := NewLoginModel("", dir)
+	m := NewLoginModel("", globalDir)
 	if len(m.entries) != 1 || !m.entries[0].IsOAuth {
 		t.Fatalf("expected single codex OAuth entry; got %#v", m.entries)
 	}
 
-	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	r := tea.KeyPressMsg{Text: "r", Code: 'r'}
+	m, cmd := m.Update(r)
 	if cmd != nil {
 		t.Fatal("opening the method chooser must not start a network command")
 	}
 	if !m.codexChoosingMethod {
-		t.Fatal("Enter on Codex OAuth entry should show method chooser")
+		t.Fatal("r on a Codex OAuth entry should show the method chooser")
 	}
 	if m.codexLogging {
 		t.Fatal("method chooser should not start login yet")
@@ -392,14 +371,15 @@ func TestLoginModel_CodexRowShownWithExistingEntry(t *testing.T) {
 	}
 }
 
-// TestLoginModel_ReauthExistingAccountTargetsItsFile verifies that Enter on an
+// TestLoginModel_ReauthExistingAccountTargetsItsFile verifies that r on an
 // existing Codex account entry sets the login target to THAT account's token
 // file, so re-auth overwrites the right account rather than creating a new one.
+// (Enter now sets the account active; re-auth moved to r.)
 func TestLoginModel_ReauthExistingAccountTargetsItsFile(t *testing.T) {
-	dir := t.TempDir()
-	seedLoginCodexAuth(t, dir)
+	_, globalDir := withTempCodexHome(t)
+	seedLoginCodexAuth(t, globalDir)
 
-	m := NewLoginModel("", dir)
+	m := NewLoginModel("", globalDir)
 	if len(m.entries) != 1 || m.entries[0].Provider != "codex" {
 		t.Fatalf("precondition: expected single codex entry; got %#v", m.entries)
 	}
@@ -407,13 +387,14 @@ func TestLoginModel_ReauthExistingAccountTargetsItsFile(t *testing.T) {
 	if wantPath == "" {
 		t.Fatal("codex entry should carry its token file path")
 	}
-	// cursor starts at 0 (the codex entry). Enter re-auths this account.
-	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// cursor starts at 0 (the codex entry). r re-auths this account.
+	r := tea.KeyPressMsg{Text: "r", Code: 'r'}
+	m, cmd := m.Update(r)
 	if cmd != nil {
-		t.Fatal("Enter on a codex entry must not start a network command")
+		t.Fatal("r on a codex entry must not start a network command")
 	}
 	if !m.codexChoosingMethod {
-		t.Fatal("Enter on a codex entry should open the method chooser")
+		t.Fatal("r on a codex entry should open the method chooser")
 	}
 	if m.codexLoginTargetPath != wantPath {
 		t.Fatalf("re-auth should target the account's own file %q; got %q", wantPath, m.codexLoginTargetPath)

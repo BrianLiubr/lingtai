@@ -665,5 +665,11 @@
   "login.codex_add_row": "添加 Codex OAuth",
   "login.codex_reauth_row": "重新认证 Codex OAuth",
   "login.codex_add_another_row": "添加另一个 Codex 账户",
-  "login.codex_add_hint": "[Enter] 登录 Codex"
+  "login.codex_add_hint": "[Enter] 登录 Codex",
+  "login.codex_active_marker": "（当前）",
+  "login.codex_set_active": "已将此 Codex 账户应用到 %d 个已保存的 Codex 预设。",
+  "login.codex_no_saved_presets": "未找到已保存的 Codex 预设；请先选择或保存 Codex 预设，再使用此账户。",
+  "login.codex_invalid_account": "该 Codex 账户无效 —— 请先按 [r] 重新认证，再将其设为当前账户。",
+  "login.codex_apply_failed": "将 Codex 账户应用到预设失败：%s",
+  "login.codex_entry_hint": "[Enter] 设为当前  [r] 重新认证  [d/Del] 删除"
 }

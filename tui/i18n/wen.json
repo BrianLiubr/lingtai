@@ -665,5 +665,11 @@
   "login.codex_add_row": "增 Codex OAuth",
   "login.codex_reauth_row": "重认 Codex OAuth",
   "login.codex_add_another_row": "增他 Codex 帐",
-  "login.codex_add_hint": "[回车] 登 Codex"
+  "login.codex_add_hint": "[回车] 登 Codex",
+  "login.codex_active_marker": "（今用）",
+  "login.codex_set_active": "已施此 Codex 帐于已存预设 %d 则。",
+  "login.codex_no_saved_presets": "未见已存 Codex 预设；宜先择或存 Codex 预设，乃用此帐。",
+  "login.codex_invalid_account": "此 Codex 帐无效 —— 宜先按 [r] 重登，再立为今用。",
+  "login.codex_apply_failed": "施 Codex 帐于预设败：%s",
+  "login.codex_entry_hint": "[回车] 立为今用  [r] 重登  [d/Del] 除"
 }
