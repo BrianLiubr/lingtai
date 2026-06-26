@@ -145,6 +145,7 @@
   "mail.telemetry_api": "调用",
   "mail.telemetry_cache": "缓存",
   "mail.telemetry_tok_per_api": "令牌/调用",
+  "mail.telemetry_kanban_hint": "/kanban 查看详情",
   "mail.no_messages": "暂无消息，等待邮件...",
   "mail.initial_loading": "加载中...",
   "mail.load_more": "▲ 还有 %d 条旧消息 — ctrl+u 加载",

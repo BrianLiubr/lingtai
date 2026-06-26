@@ -36,8 +36,10 @@ import (
 // a key that does not exist (context_limit sits at the manifest TOP LEVEL), so
 // the "/ limit" half silently never rendered. This version reads current-session
 // stats from the same source the molt-session stats panel uses
-// (fs.SumMoltSessionTokenLedger().Current, props.go) and the limit from the
-// correct manifest key. When no data is available the row is omitted entirely.
+// (fs.SumMoltSessionTokenLedger().Current, props.go) and reads context usage +
+// window from the SAME live `.status.json` snapshot /kanban's context section
+// uses (fs.ReadStatus().Tokens.Context, props.go:518-535) so the two never
+// disagree. When no data is available the row is omitted entirely.
 
 // homeTelemetry holds the already-resolved scalars for the home row. Keeping the
 // data plain (no rendering) makes formatHomeTelemetry trivially testable.
@@ -55,16 +57,28 @@ type homeTelemetry struct {
 //   - current-session token/cache/api stats from logs/token_ledger.jsonl bounded
 //     to the current molt window (fs.SumMoltSessionTokenLedger().Current) — the
 //     SAME source and scope as the molt-session stats panel in props.go
-//   - contextLimit from manifest TOP-LEVEL `context_limit` (fs.ReadInitManifest)
-//   - contextUsage from the freshest notification Meta.Context.Usage in the
-//     UNFILTERED session cache (the same value the notification footer renders).
-//     It deliberately does NOT read m.messages: that list is verbose-filtered, so
-//     notifications are absent at the home view (verboseOff) and the ctx bar would
-//     only surface after Ctrl+O. Reading the session cache keeps it independent of
-//     view/verbose state.
+//   - contextUsage + contextLimit from the live `.status.json` snapshot
+//     (fs.ReadStatus().Tokens.Context) — the SAME source, scope, and gate
+//     (WindowSize > 0) that /kanban's context section uses (props.go:518-535).
+//     This is the fix for Jason's "home ctx bar disagrees with /kanban" report:
+//     `.status.json` is rewritten by the kernel on a tight cadence and re-read
+//     here every 1s poll, whereas the notification Meta.Context.Usage below is
+//     only refreshed when a notification is injected (per molt round) and so can
+//     lag the live value by many minutes. Reading `.status.json` makes the home
+//     row show the exact same percentage and window /kanban does.
+//   - notification Meta.Context.Usage from the UNFILTERED session cache is kept
+//     ONLY as a fallback for agents with no live `.status.json` (stopped /
+//     never-booted — /kanban shows no context section for them either, but the
+//     home row degrades to the last notification value so the bar doesn't vanish
+//     mid-session). Reading the session cache — not the verbose-filtered
+//     m.messages — keeps that fallback independent of Ctrl+O/verbose state (the
+//     #442 regression: shouldShow() hides notifications below verboseThinking).
+//   - contextLimit also falls back to manifest TOP-LEVEL `context_limit`
+//     (fs.ReadInitManifest) when `.status.json` carries no WindowSize.
 //
 // Every source degrades to its "unknown" sentinel independently, so a missing
-// ledger / manifest / notification just drops that fragment rather than the row.
+// ledger / status / manifest / notification just drops that fragment rather than
+// the row.
 func (m MailModel) gatherHomeTelemetry() homeTelemetry {
 	t := homeTelemetry{contextUsage: -1}
 	if m.orchestrator != "" {
@@ -73,17 +87,27 @@ func (m MailModel) gatherHomeTelemetry() homeTelemetry {
 		t.sessionTokens = cur.Input + cur.Output + cur.Thinking
 		t.cached = cur.Cached
 		t.inputTokens = cur.Input
-		if manifest, err := fs.ReadInitManifest(m.orchestrator); err == nil {
-			t.contextLimit = manifestContextLimit(manifest)
+
+		// Primary, /kanban-identical source: the live `.status.json` context
+		// snapshot. Gate on WindowSize > 0 exactly as props.go does so the home
+		// row shows context whenever — and only when — /kanban would.
+		ctx := fs.ReadStatus(m.orchestrator).Tokens.Context
+		if ctx.WindowSize > 0 {
+			t.contextUsage = ctx.UsagePct / 100
+			t.contextLimit = int64(ctx.WindowSize)
+		}
+
+		// contextLimit fallback for agents with no live status snapshot.
+		if t.contextLimit == 0 {
+			if manifest, err := fs.ReadInitManifest(m.orchestrator); err == nil {
+				t.contextLimit = manifestContextLimit(manifest)
+			}
 		}
 	}
-	// Latest context-usage fraction. This MUST read the UNFILTERED session-cache
-	// entries, not the verbose-filtered m.messages: shouldShow() gates
-	// "notification" entries behind verbose >= verboseThinking, so at the normal
-	// home view (verboseOff) notifications are absent from m.messages and the ctx
-	// bar would only appear after Ctrl+O cycled verbose up. The session cache
-	// holds every entry regardless of verbose, so the bar is view-state-independent.
-	if m.sessionCache != nil {
+	// contextUsage fallback: when `.status.json` had no usable WindowSize, fall
+	// back to the freshest notification Meta.Context.Usage in the UNFILTERED
+	// session cache (NOT verbose-filtered m.messages — see the #442 note above).
+	if t.contextUsage < 0 && m.sessionCache != nil {
 		t.contextUsage = latestContextUsage(m.sessionCache.Entries())
 	}
 	return t
@@ -211,7 +235,29 @@ func formatHomeTelemetry(t homeTelemetry, width int) string {
 	segs = append([]string{i18n.T("mail.telemetry_session") + "  " + RuneBullet}, segs...)
 	// Two spaces between segments for a calm, low-density-feeling separation; the
 	// label words themselves are muted by the caller's style.
-	return "  " + StyleFaint.Render(strings.Join(segs, "  "))
+	left := "  " + StyleFaint.Render(strings.Join(segs, "  "))
+
+	// Right-side affordance pointing at the full breakdown (Jason's follow-up):
+	// the home row is a glance; "/kanban for details" tells the user where the
+	// system/tools/history split, window math, and per-tool counts live. Localized
+	// via i18n (mail.telemetry_kanban_hint). It is dropped on terminals too narrow
+	// to right-align it without colliding with the metrics, so the numbers always
+	// win the space. Mirrors the status bar's left/pad/right layout (mail.go).
+	return appendKanbanHint(left, width)
+}
+
+// appendKanbanHint right-aligns the "/kanban for details" affordance against the
+// terminal width, padding between the already-rendered left segment and the hint.
+// It returns left unchanged when there isn't room for at least two spaces of gap,
+// so the metrics never get clipped on narrow terminals.
+func appendKanbanHint(left string, width int) string {
+	hint := StyleFaint.Render(i18n.T("mail.telemetry_kanban_hint"))
+	// -1 trailing margin mirrors the status bar's right edge (mail.go statusPad).
+	pad := width - lipgloss.Width(left) - lipgloss.Width(hint) - 1
+	if pad < 2 {
+		return left
+	}
+	return left + strings.Repeat(" ", pad) + hint
 }
 
 const (
