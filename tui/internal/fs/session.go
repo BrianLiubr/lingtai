@@ -32,6 +32,7 @@ type SessionEntry struct {
 	Sources     []string          `json:"sources,omitempty"`     // notification entries — list of source keys (email, soul, system, ...)
 	Meta        *NotificationMeta `json:"meta,omitempty"`        // notification entries — vital signs at injection time (kernel build_meta + injection_seq)
 	ApiCallID   string            `json:"api_call_id,omitempty"` // llm/tool entries — one LLM API round-trip grouping id
+	TokenUsage  *TokenUsage       `json:"token_usage,omitempty"` // llm_response entries — per-round token scalars (input/output/cached)
 
 	// Delivered is a transient field propagated from MailMessage.Delivered.
 	// Only meaningful for Type == "mail". Not persisted to session.jsonl.
@@ -55,6 +56,22 @@ type NotificationMetaContext struct {
 	SystemTokens  int     `json:"system_tokens,omitempty"`
 	HistoryTokens int     `json:"history_tokens,omitempty"`
 	Usage         float64 `json:"usage,omitempty"`
+}
+
+// TokenUsage carries the per-round token scalars logged on an llm_response
+// event: input_tokens, output_tokens, cached_tokens (plus the estimated flag
+// the kernel sets when a provider returned no usage and the count was derived).
+// Input is the true total input (raw + cache_read + cache_write, normalised per
+// adapter), so the cache-miss complement is Input-Cached and the cache rate is
+// Cached/Input — same semantics as the token_ledger.jsonl row for the same
+// api_call_id (see tui/internal/fs/agent.go LedgerEntry). The TUI renders these
+// four derived numbers as a compact footer at the bottom of the ctrl+o API call
+// group; the noisy `_meta` envelope hidden by PR #440 is never read here.
+type TokenUsage struct {
+	Input     int64 `json:"input"`
+	Output    int64 `json:"output"`
+	Cached    int64 `json:"cached"`
+	Estimated bool  `json:"estimated,omitempty"`
 }
 
 // SessionCache is an append-only cache backed by session.jsonl.
@@ -737,8 +754,43 @@ func parseEventMap(raw map[string]interface{}) *SessionEntry {
 	if eventType == "aed" {
 		e.Source = aedSubtype
 	}
+	if eventType == "llm_response" {
+		// llm_response carries the per-round token scalars directly on the
+		// event. We extract only these numbers (never the `_meta` envelope) so
+		// the TUI can render a compact usage footer at the bottom of the API
+		// call group. Missing/zero fields are fine — the renderer drops empty
+		// fragments. Older events that predate the usage emitter carry no
+		// token fields; intField returns 0 and the renderer shows nothing.
+		input := intField(raw, "input_tokens")
+		output := intField(raw, "output_tokens")
+		cached := intField(raw, "cached_tokens")
+		estimated, _ := raw["estimated"].(bool)
+		if input != 0 || output != 0 || cached != 0 {
+			e.TokenUsage = &TokenUsage{
+				Input:     input,
+				Output:    output,
+				Cached:    cached,
+				Estimated: estimated,
+			}
+		}
+	}
 
 	return e
+}
+
+// intField reads a numeric event field as int64. JSON numbers decode to
+// float64 through encoding/json, so this tolerates both float64 and any
+// integer types that may appear from other decoders.
+func intField(raw map[string]interface{}, key string) int64 {
+	switch v := raw[key].(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	}
+	return 0
 }
 
 func extractSessionEventText(entry map[string]interface{}, eventType string) string {

@@ -138,6 +138,7 @@
   "mail.launch_failed": "Failed to launch agent: %s",
   "mail.editor_hint": "Input box scrolls at this size. Use pgup/pgdn or mouse wheel here; ctrl+e opens vim/editor.",
   "mail.meta_hidden_hint": "_meta hidden — use /notification to see the meta block",
+  "mail.token_usage_footer": "tokens: input %s · cache miss %s · output %s · cache rate %s",
   "mail.no_messages": "No messages yet. Waiting for mail...",
   "mail.initial_loading": "loading...",
   "mail.load_more": "▲ %d older — ctrl+u to load",

@@ -388,6 +388,47 @@ func TestParseEventToolResultRendersScalarAndKeepsLongResult(t *testing.T) {
 	}
 }
 
+func TestParseEventLLMResponseCarriesTokenUsage(t *testing.T) {
+	// llm_response events carry the per-round token usage scalars directly,
+	// alongside the api_call_id that groups the round. The TUI surfaces these
+	// (input, cache miss, output, cache rate) at the bottom of the ctrl+o API
+	// call group; here we only assert the parse layer captures the scalars.
+	raw := map[string]interface{}{
+		"ts":             1781258400.0,
+		"type":           "llm_response",
+		"api_call_id":    "api_4cd307b10902",
+		"input_tokens":   181585.0,
+		"output_tokens":  2275.0,
+		"cached_tokens":  180224.0,
+		"thinking_tokens": 516.0,
+		"estimated":      false,
+	}
+	line, _ := json.Marshal(raw)
+
+	e := parseEvent(line)
+	if e == nil {
+		t.Fatal("parseEvent returned nil")
+	}
+	if e.ApiCallID != "api_4cd307b10902" {
+		t.Fatalf("ApiCallID = %q, want api_4cd307b10902", e.ApiCallID)
+	}
+	if e.TokenUsage == nil {
+		t.Fatal("TokenUsage is nil; want populated scalars")
+	}
+	if e.TokenUsage.Input != 181585 {
+		t.Errorf("TokenUsage.Input = %d, want 181585", e.TokenUsage.Input)
+	}
+	if e.TokenUsage.Output != 2275 {
+		t.Errorf("TokenUsage.Output = %d, want 2275", e.TokenUsage.Output)
+	}
+	if e.TokenUsage.Cached != 180224 {
+		t.Errorf("TokenUsage.Cached = %d, want 180224", e.TokenUsage.Cached)
+	}
+	if e.TokenUsage.Estimated {
+		t.Errorf("TokenUsage.Estimated = true, want false")
+	}
+}
+
 func TestParseEventToolResultHidesMetaBlocksBehindNotificationHint(t *testing.T) {
 	raw := map[string]interface{}{
 		"ts":            1781258400.0,

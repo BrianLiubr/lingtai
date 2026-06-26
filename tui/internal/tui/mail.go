@@ -45,6 +45,7 @@ type ChatMessage struct {
 	Source      string               // for Type=="aed": subtype ("attempt" | "exhausted" | "timeout")
 	Meta        *fs.NotificationMeta // for Type=="notification": kernel vital signs at injection time (issue #40)
 	ApiCallID   string               // for text_output/tool_call/tool_result: LLM API round-trip grouping id
+	TokenUsage  *fs.TokenUsage       // for Type=="llm_response": per-round token scalars; rendered as a footer at the bottom of the api_call group
 }
 
 // ViewChangeMsg requests the app to switch views.
@@ -479,8 +480,14 @@ func (m *MailModel) shouldShow(e fs.SessionEntry) bool {
 		// render only the first line there, and reserve the full body for
 		// level 2. The cycle has no third verbose layer.
 		return m.verbose >= verboseThinking
-	case "llm_call", "llm_response":
-		// Hidden boundary markers used to derive tool-call grouping for older
+	case "llm_response":
+		// Normally a hidden boundary marker used to derive tool-call grouping
+		// for older events. When it carries per-round token usage we keep it so
+		// renderMessages can emit a compact usage footer at the bottom of the
+		// api_call group (it never renders as a raw "[llm_response]" block).
+		return e.TokenUsage != nil && m.verbose >= verboseThinking
+	case "llm_call":
+		// Hidden boundary marker used to derive tool-call grouping for older
 		// events that predate explicit api_call_id on tool events.
 		return false
 	case "insight":
@@ -566,6 +573,7 @@ func sessionEntryToChatMessage(e fs.SessionEntry, humanAddr string) ChatMessage 
 		Source:      e.Source,
 		Meta:        e.Meta,
 		ApiCallID:   e.ApiCallID,
+		TokenUsage:  e.TokenUsage,
 	}
 	if e.Type == "mail" {
 		cm.IsFromMe = e.From == "human"
@@ -947,7 +955,49 @@ func (m MailModel) renderMessages(msgs []ChatMessage) string {
 
 	var b strings.Builder
 	var prevVisibleApiGroup *ChatMessage
+
+	// Token-usage footer is deferred to the bottom of its api_call group. The
+	// llm_response carrier that holds the scalars arrives at the TOP of the
+	// group in stream order (llm_call → llm_response → tool_call/tool_result),
+	// so we stash it and flush a single faint footer line once the group ends:
+	// before the blank separator that precedes the next group, when a
+	// non-grouped entry breaks the run, or at end of stream.
+	tokenFooterStyle := lipgloss.NewStyle().Foreground(ColorTextDim).Faint(true)
+	var pendingUsage *fs.TokenUsage
+	pendingGroup := ""
+	flushTokenFooter := func() {
+		if pendingUsage == nil {
+			return
+		}
+		if footer := formatTokenUsageFooter(pendingUsage); footer != "" {
+			b.WriteString(tokenFooterStyle.Render("  "+RuneBullet+" "+footer) + "\n")
+		}
+		pendingUsage = nil
+		pendingGroup = ""
+	}
+
 	for _, msg := range msgs {
+		// The llm_response carrier renders nothing inline — it only arms the
+		// deferred footer for its group. A second llm_response for the same
+		// group (rare) keeps the latest scalars.
+		if msg.Type == "llm_response" {
+			if msg.TokenUsage != nil && m.verbose >= verboseThinking {
+				if pendingGroup != "" && pendingGroup != msg.ApiCallID {
+					flushTokenFooter()
+				}
+				pendingUsage = msg.TokenUsage
+				pendingGroup = msg.ApiCallID
+			}
+			continue
+		}
+		// A pending footer belongs to the group identified by pendingGroup.
+		// Flush it once that group ends: either the current entry is not part
+		// of the same api_call group, or it is a non-grouped entry type.
+		if pendingUsage != nil {
+			if !isApiGroupedVerboseMessageType(msg.Type) || msg.ApiCallID != pendingGroup {
+				flushTokenFooter()
+			}
+		}
 		if !isApiGroupedVerboseMessageType(msg.Type) {
 			prevVisibleApiGroup = nil
 		}
@@ -1193,6 +1243,8 @@ func (m MailModel) renderMessages(msgs []ChatMessage) string {
 			}
 		}
 	}
+	// Flush a token footer left pending by the final api_call group.
+	flushTokenFooter()
 	return b.String()
 }
 
@@ -1394,7 +1446,8 @@ func (m MailModel) View() string {
 		statusBar += strings.Repeat(" ", statusPad) + hints
 	}
 
-	footer := sep + "\n" + inputSection + "\n" + statusBar
+	footer := sep + "\n" + inputSection + "\n"
+	footer += statusBar
 
 	// Top banner: a one-time "loading... / 加载中..." line while the deferred
 	// initial session rebuild is still pending, then "▲ N older — ctrl+u to load".
