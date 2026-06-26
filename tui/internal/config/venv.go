@@ -411,6 +411,50 @@ type CommandResult struct {
 	Err    error
 }
 
+// TUIInstallMethod identifies how the running lingtai-tui binary appears to
+// have been installed. It is intentionally small for now: doctor only needs
+// report/routing clarity, not a full updater backend.
+type TUIInstallMethod string
+
+const (
+	TUIInstallMethodSource   TUIInstallMethod = "source"
+	TUIInstallMethodHomebrew TUIInstallMethod = "homebrew"
+	TUIInstallMethodUnknown  TUIInstallMethod = "unknown"
+
+	sourceInstallMetadataSchema = "lingtai.tui.install/v1"
+)
+
+// TUIInstallInfo is the install-method detection result used by doctor and
+// future updater routing.
+type TUIInstallInfo struct {
+	Method       TUIInstallMethod
+	Detail       string
+	MetadataPath string
+	Diagnostics  []DoctorLine
+}
+
+func (i TUIInstallInfo) summary() string {
+	label := string(i.Method)
+	if i.Method == TUIInstallMethodSource {
+		label = "source/user-local"
+	} else if i.Method == TUIInstallMethodUnknown {
+		label = "unknown/other"
+	}
+	if i.Detail == "" {
+		return label
+	}
+	return fmt.Sprintf("%s (%s)", label, i.Detail)
+}
+
+type tuiInstallMetadata struct {
+	Schema          string   `json:"schema"`
+	SchemaVersion   int      `json:"schema_version"`
+	InstallMethod   string   `json:"install_method"`
+	Prefix          string   `json:"prefix"`
+	BinDir          string   `json:"bin_dir"`
+	ManagedBinaries []string `json:"managed_binaries"`
+}
+
 type execCommandRunner struct{}
 
 func (execCommandRunner) Run(name string, args ...string) CommandResult {
@@ -423,8 +467,9 @@ func (execCommandRunner) Run(name string, args ...string) CommandResult {
 }
 
 // RunDoctorUpdate force-checks and repairs the two shipped update surfaces:
-// the Homebrew-installed TUI binary and the managed Python `lingtai` runtime.
-// It never mutates symlinks directly; TUI upgrades are delegated to brew, and
+// the TUI binary and the managed Python `lingtai` runtime. It detects the TUI
+// install method first; today's automated TUI upgrade path is only Homebrew,
+// while source/user-local and unknown installs get explicit manual guidance.
 // Python runtime upgrades are delegated to uv/pip, then verified afterwards.
 func RunDoctorUpdate(globalDir string, opts DoctorOptions) DoctorReport {
 	report := DoctorReport{Healthy: true}
@@ -452,22 +497,36 @@ func RunDoctorUpdate(globalDir string, opts DoctorOptions) DoctorReport {
 			opts.EnsureVenvFunc = func(dir string) error { return EnsureVenvQuiet(dir, nil) }
 		}
 	}
+	if opts.LookupEnv == nil {
+		opts.LookupEnv = os.LookupEnv
+	}
 
-	report.checkTUI(opts)
+	report.checkTUI(globalDir, opts)
 	report.checkPythonRuntime(globalDir, opts)
 	report.checkFileSearchNative(globalDir, opts)
 	return report
 }
 
-func (r *DoctorReport) checkTUI(opts DoctorOptions) {
+func (r *DoctorReport) checkTUI(globalDir string, opts DoctorOptions) {
 	current := strings.TrimSpace(opts.CurrentTUIVersion)
 	exe, err := opts.Executable()
 	if err != nil || exe == "" {
 		r.add(DoctorWarn, "TUI executable: unknown (%v)", err)
 	} else {
 		r.add(DoctorInfo, "TUI executable: %s", exe)
+	}
+	install := detectTUIInstallMethod(globalDir, exe, opts)
+	for _, line := range install.Diagnostics {
+		r.add(line.Severity, "%s", line.Text)
+	}
+	r.add(DoctorInfo, "TUI install method: %s", install.summary())
+	if exe != "" {
 		if target, linkErr := opts.Readlink(exe); linkErr == nil && target != "" {
-			r.add(DoctorWarn, "TUI executable is a symlink to %s; brew may update the Cellar copy without changing this dev/manual link", target)
+			if install.Method != TUIInstallMethodHomebrew {
+				r.add(DoctorWarn, "TUI executable is a symlink to %s; install method is %s, so automatic TUI updates are not routed through brew", target, install.summary())
+			} else {
+				r.add(DoctorWarn, "TUI executable is a symlink to %s; brew may update the Cellar copy without changing this dev/manual link", target)
+			}
 		}
 	}
 	if current == "" {
@@ -518,6 +577,14 @@ func (r *DoctorReport) checkTUI(opts DoctorOptions) {
 	if !opts.ForceTUI {
 		return
 	}
+	if install.Method == TUIInstallMethodSource {
+		r.add(DoctorWarn, "Source/user-local TUI update is not automated yet; rerun the installer for %s from https://github.com/Lingtai-AI/lingtai/releases/tag/%s", release.TagName, release.TagName)
+		return
+	}
+	if install.Method != TUIInstallMethodHomebrew {
+		r.add(DoctorWarn, "TUI install method is unknown; update manually from https://github.com/Lingtai-AI/lingtai/releases/tag/%s", release.TagName)
+		return
+	}
 	brew, err := opts.LookPath("brew")
 	if err != nil || brew == "" {
 		r.add(DoctorFail, "Homebrew not found; install/update manually from https://github.com/Lingtai-AI/lingtai/releases/tag/%s", release.TagName)
@@ -533,6 +600,150 @@ func (r *DoctorReport) checkTUI(opts DoctorOptions) {
 		}
 	}
 	r.add(DoctorWarn, "Brew upgrade finished. Restart lingtai-tui and run `lingtai-tui version` to verify the active binary changed.")
+}
+
+func detectTUIInstallMethod(globalDir, exe string, opts DoctorOptions) TUIInstallInfo {
+	info := TUIInstallInfo{
+		Method:       TUIInstallMethodUnknown,
+		Detail:       "no matching source metadata or Homebrew path",
+		MetadataPath: filepath.Join(globalDir, "install.json"),
+	}
+	if opts.LookupEnv == nil {
+		opts.LookupEnv = os.LookupEnv
+	}
+
+	meta, err := readTUIInstallMetadata(info.MetadataPath)
+	if err == nil {
+		if isSourceInstallMetadata(meta) {
+			if exe == "" || sourceMetadataMatchesExecutable(meta, exe) {
+				detail := fmt.Sprintf("metadata at %s", info.MetadataPath)
+				if meta.Prefix != "" {
+					detail = fmt.Sprintf("%s, prefix %s", detail, meta.Prefix)
+				}
+				return TUIInstallInfo{Method: TUIInstallMethodSource, Detail: detail, MetadataPath: info.MetadataPath}
+			}
+			info.Diagnostics = append(info.Diagnostics, DoctorLine{
+				Severity: DoctorWarn,
+				Text:     fmt.Sprintf("TUI install metadata at %s does not match executable %s; ignoring it", info.MetadataPath, exe),
+			})
+		} else {
+			info.Diagnostics = append(info.Diagnostics, DoctorLine{
+				Severity: DoctorWarn,
+				Text:     fmt.Sprintf("TUI install metadata at %s is not recognized as source install metadata; ignoring it", info.MetadataPath),
+			})
+		}
+	} else if !os.IsNotExist(err) {
+		info.Diagnostics = append(info.Diagnostics, DoctorLine{
+			Severity: DoctorWarn,
+			Text:     fmt.Sprintf("TUI install metadata at %s could not be read: %v", info.MetadataPath, err),
+		})
+	}
+
+	homebrewExe := exe
+	if exe != "" {
+		// Intel macOS Homebrew launches can report /usr/local/bin/lingtai-tui
+		// here; resolve it before matching Cellar paths, but ignore failures.
+		if resolvedExe, err := filepath.EvalSymlinks(exe); err == nil && resolvedExe != "" {
+			homebrewExe = resolvedExe
+		}
+	}
+	if ok, detail := detectHomebrewTUIInstall(homebrewExe, opts.LookupEnv); ok {
+		info.Method = TUIInstallMethodHomebrew
+		info.Detail = detail
+	}
+	return info
+}
+
+func readTUIInstallMetadata(path string) (tuiInstallMetadata, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return tuiInstallMetadata{}, err
+	}
+	var meta tuiInstallMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return tuiInstallMetadata{}, err
+	}
+	return meta, nil
+}
+
+func isSourceInstallMetadata(meta tuiInstallMetadata) bool {
+	return meta.Schema == sourceInstallMetadataSchema &&
+		meta.SchemaVersion == 1 &&
+		meta.InstallMethod == "source"
+}
+
+func sourceMetadataMatchesExecutable(meta tuiInstallMetadata, exe string) bool {
+	if exe == "" {
+		return false
+	}
+	for _, managed := range meta.ManagedBinaries {
+		if samePath(managed, exe) {
+			return true
+		}
+	}
+	if meta.BinDir != "" && samePath(filepath.Join(meta.BinDir, "lingtai-tui"), exe) {
+		return true
+	}
+	// install.sh also creates a "lingtai" alias symlink in bin_dir pointing at
+	// lingtai-tui. Invoking through it (e.g. `lingtai doctor`) makes
+	// os.Executable report the unresolved alias path on macOS, which matches no
+	// managed binary; treat the alias as owned by this source install.
+	if meta.BinDir != "" && samePath(filepath.Join(meta.BinDir, "lingtai"), exe) {
+		return true
+	}
+	return false
+}
+
+func detectHomebrewTUIInstall(exe string, lookupEnv func(string) (string, bool)) (bool, string) {
+	if exe == "" {
+		return false, ""
+	}
+	for _, key := range []string{"HOMEBREW_PREFIX", "HOMEBREW_CELLAR", "HOMEBREW_REPOSITORY"} {
+		if lookupEnv == nil {
+			continue
+		}
+		value, ok := lookupEnv(key)
+		if ok && value != "" && pathWithin(exe, value) {
+			return true, fmt.Sprintf("executable under $%s (%s)", key, value)
+		}
+	}
+	slash := filepath.ToSlash(filepath.Clean(exe))
+	if strings.Contains(slash, "/Cellar/") {
+		return true, "executable under a Homebrew Cellar path"
+	}
+	for _, prefix := range []string{
+		"/opt/homebrew",
+		"/home/linuxbrew/.linuxbrew",
+		"/usr/local/Homebrew",
+		"/usr/local/Cellar",
+	} {
+		if pathWithin(exe, prefix) {
+			return true, fmt.Sprintf("executable under %s", prefix)
+		}
+	}
+	return false, ""
+}
+
+func samePath(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func pathWithin(path, dir string) bool {
+	path = filepath.Clean(path)
+	dir = filepath.Clean(dir)
+	if samePath(path, dir) {
+		return true
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 func (r *DoctorReport) checkPythonRuntime(globalDir string, opts DoctorOptions) {
