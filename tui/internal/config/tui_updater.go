@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -73,6 +74,80 @@ func SelectTUIUpdater(install TUIInstallInfo) TUIUpdater {
 // RunTUIUpdate selects and runs the backend for the detected install method.
 func RunTUIUpdate(install TUIInstallInfo, opts TUIUpdateOptions) TUIUpdateResult {
 	return SelectTUIUpdater(install).Upgrade(opts)
+}
+
+// ManualTUIUpdateOptions injects side effects for `lingtai-tui self-update`.
+type ManualTUIUpdateOptions struct {
+	CurrentTUIVersion string
+
+	HTTPClient *http.Client
+	Runner     CommandRunner
+	LookPath   func(string) (string, error)
+	Executable func() (string, error)
+	LookupEnv  func(string) (string, bool)
+}
+
+// RunManualTUIUpdate detects the current install method and runs the matching
+// TUI updater backend. Unlike doctor, source/user-local and unknown installs
+// are command failures because the requested mutation is not implemented yet.
+func RunManualTUIUpdate(globalDir string, opts ManualTUIUpdateOptions) TUIUpdateResult {
+	result := TUIUpdateResult{Healthy: true}
+	if opts.Executable == nil {
+		opts.Executable = os.Executable
+	}
+
+	exe, err := opts.Executable()
+	if err != nil || exe == "" {
+		result.add(DoctorWarn, "TUI executable: unknown (%v)", err)
+	} else {
+		result.add(DoctorInfo, "TUI executable: %s", exe)
+	}
+
+	install := detectTUIInstallMethod(globalDir, exe, DoctorOptions{LookupEnv: opts.LookupEnv})
+	for _, line := range install.Diagnostics {
+		result.add(line.Severity, "%s", line.Text)
+	}
+	result.add(DoctorInfo, "TUI install method: %s", install.summary())
+
+	latestVersion := ""
+	release, releaseErr := fetchLatestGitHubRelease(opts.HTTPClient)
+	if releaseErr != nil {
+		result.add(DoctorWarn, "Could not check latest TUI release on GitHub: %v", releaseErr)
+	} else {
+		latestVersion = release.TagName
+		result.add(DoctorInfo, "Latest TUI release: %s", release.TagName)
+		if current := opts.CurrentTUIVersion; current != "" {
+			switch {
+			case current == "dev" || strings.Contains(current, "-"):
+				result.add(DoctorWarn, "Current TUI build is %q; running updater without version comparison", current)
+			case releaseNewer(current, release.TagName):
+				result.add(DoctorWarn, "TUI update available: %s -> %s", current, release.TagName)
+			default:
+				result.add(DoctorOK, "Latest release is not newer than current TUI version; running updater anyway")
+			}
+		}
+	}
+
+	update := RunTUIUpdate(install, TUIUpdateOptions{
+		LatestVersion:         latestVersion,
+		Runner:                opts.Runner,
+		LookPath:              opts.LookPath,
+		IncludeHomebrewUpdate: true,
+		ResolveHomebrewPath:   true,
+	})
+	result.Lines = append(result.Lines, update.Lines...)
+	result.Updated = update.Updated
+	result.Err = update.Err
+	if !update.Healthy {
+		result.Healthy = false
+		return result
+	}
+	if install.Method != TUIInstallMethodHomebrew {
+		result.Err = fmt.Errorf("manual self-update unsupported for %s installs", install.summary())
+		result.add(DoctorFail, "Manual self-update for %s installs is not supported yet.", install.summary())
+		return result
+	}
+	return result
 }
 
 type homebrewTUIUpdater struct{}

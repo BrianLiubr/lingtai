@@ -84,6 +84,10 @@ func main() {
 			spawnMain()
 			return
 		}
+		if arg == "self-update" {
+			selfUpdateMain()
+			return
+		}
 		if arg == "doctor" {
 			doctorMain()
 			return
@@ -645,6 +649,7 @@ func printHelp() {
 	fmt.Println("       lingtai-tui bootstrap")
 	fmt.Println("       lingtai-tui presets [--saved-only] [--templates-only]")
 	fmt.Println("       lingtai-tui spawn <dir> --preset <name> [--agent-name <name>] [--language <code>]")
+	fmt.Println("       lingtai-tui self-update")
 	fmt.Println("       lingtai-tui doctor")
 	fmt.Println()
 	fmt.Println("  (no args)    Launch TUI in current directory")
@@ -659,6 +664,7 @@ func printHelp() {
 	fmt.Println("  bootstrap       Re-extract embedded skills to ~/.lingtai-tui/utilities/")
 	fmt.Println("  presets      List available presets as JSON (for agent consumption)")
 	fmt.Println("  spawn        Create a new project and launch an agent headlessly (JSON output)")
+	fmt.Println("  self-update  Run the TUI binary updater for the detected install method")
 	fmt.Println("  doctor       Force-check + update TUI/kernel/venv. Use when the TUI cannot start.")
 	fmt.Println()
 	fmt.Println("  You are responsible for all .lingtai/ folders on this machine.")
@@ -1008,6 +1014,29 @@ func doctorMain() {
 	}
 	fmt.Println()
 	fmt.Println("Doctor completed with failures. Review the lines above; if the TUI binary was upgraded, restart lingtai-tui and run doctor again.")
+	os.Exit(1)
+}
+
+func selfUpdateMain() {
+	globalDir, err := config.GlobalDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	report := config.RunManualTUIUpdate(globalDir, config.ManualTUIUpdateOptions{
+		CurrentTUIVersion: version,
+	})
+	for _, line := range report.Lines {
+		fmt.Printf("%s %s\n", doctorCLIIndicator(line.Severity), line.Text)
+	}
+
+	if report.Healthy {
+		return
+	}
+	if report.Err != nil {
+		fmt.Fprintf(os.Stderr, "Self-update failed: %v\n", report.Err)
+	}
 	os.Exit(1)
 }
 
