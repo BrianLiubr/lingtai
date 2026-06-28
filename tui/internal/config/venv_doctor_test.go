@@ -242,7 +242,7 @@ func TestDetectTUIInstallMethodHomebrewFromPathAndEnv(t *testing.T) {
 	}{
 		{name: "apple silicon path", exe: "/opt/homebrew/bin/__lingtai_doctor_test_lingtai_tui__"},
 		{name: "linuxbrew path", exe: "/home/linuxbrew/.linuxbrew/bin/lingtai-tui"},
-		{name: "intel homebrew env", exe: "/usr/local/bin/lingtai-tui", env: map[string]string{"HOMEBREW_PREFIX": "/usr/local"}},
+		{name: "intel homebrew env", exe: "/usr/local/bin/__lingtai_doctor_test_lingtai_tui__", env: map[string]string{"HOMEBREW_PREFIX": "/usr/local"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

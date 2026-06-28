@@ -194,7 +194,7 @@ func TestManualTUIUpdateHomebrewRoutesThroughUpdater(t *testing.T) {
 			}
 			return "", errors.New("not found")
 		},
-		Executable: func() (string, error) { return "/opt/homebrew/bin/lingtai-tui", nil },
+		Executable: func() (string, error) { return "/opt/homebrew/bin/__lingtai_doctor_test_lingtai_tui__", nil },
 		LookupEnv:  func(string) (string, bool) { return "", false },
 	})
 
