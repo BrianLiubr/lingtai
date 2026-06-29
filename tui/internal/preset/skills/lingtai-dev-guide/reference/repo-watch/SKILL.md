@@ -7,6 +7,7 @@ description: >
   idempotent repository-health digest. This is a nested lingtai-dev-guide
   reference, not a top-level intrinsic skill.
 version: 1.0.0
+last_changed_at: "2026-06-29T01:44:32-07:00"
 ---
 
 # LingTai Repo Watch
