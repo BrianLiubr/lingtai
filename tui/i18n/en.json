@@ -424,6 +424,7 @@
   "update_tui.updating": "Updating TUI...",
   "update_tui.done": "TUI updated successfully. Please restart lingtai-tui.",
   "update_tui.failed": "TUI update failed — see the lines above. Press [r] to retry.",
+  "update_tui.unsupported": "Cannot self-update: install method is %s. Please update manually.",
   "doctor.title": "Doctor",
   "doctor.scroll": "scroll",
   "doctor.section_runtime": "Runtime & assets",

@@ -419,6 +419,7 @@
   "update_tui.updating": "更器中...",
   "update_tui.done": "器更既毕。请重启 lingtai-tui。",
   "update_tui.failed": "器更败——详见上文。按 [r] 复试。",
+  "update_tui.unsupported": "无法自器更：器道为 %s。请手更之。",
   "doctor.title": "诊",
   "doctor.scroll": "卷",
   "doctor.section_runtime": "运行时与资",

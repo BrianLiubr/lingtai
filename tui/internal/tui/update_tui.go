@@ -50,6 +50,7 @@ type UpdateTUIModel struct {
 	confirmIdx  int // 0 = Update now, 1 = Cancel
 	resultLines []doctorLine
 	failed      bool // true when the TUI update reported an unhealthy result
+	unsupported bool // true when the install method cannot self-update
 	width       int
 	height      int
 
@@ -104,6 +105,7 @@ func (m UpdateTUIModel) Update(msg tea.Msg) (UpdateTUIModel, tea.Cmd) {
 		// Unsupported install methods (unknown/other) cannot self-update; skip
 		// the confirm prompt and surface the updater's guidance directly.
 		if msg.install.Method == config.TUIInstallMethodUnknown {
+			m.unsupported = true
 			m.state = stateTUIDone
 		} else {
 			m.state = stateTUIConfirm
@@ -195,6 +197,11 @@ func (m UpdateTUIModel) View() string {
 	case stateTUIUpdating:
 		b.WriteString("  " + i18n.T("update_tui.updating") + "\n")
 	case stateTUIDone:
+		if m.unsupported {
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(ColorStuck).Render(
+				i18n.TF("update_tui.unsupported", tuiInstallLabel(m.install))) + "\n")
+			break
+		}
 		for _, line := range m.resultLines {
 			switch {
 			case line.Warn:

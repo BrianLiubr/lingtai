@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -30,6 +31,9 @@ func TestUpdateTUIModelUnsupportedSkipsConfirm(t *testing.T) {
 
 	if m.state != stateTUIDone {
 		t.Fatalf("unsupported install should skip confirm and reach stateTUIDone, got %v", m.state)
+	}
+	if !m.unsupported {
+		t.Fatal("unsupported install should set m.unsupported = true")
 	}
 	if updateCalled {
 		t.Fatal("unsupported install must not run RunManualTUIUpdate")
@@ -190,5 +194,38 @@ func TestUpdateTUIModelRetryOnFailure(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("expected 2 update calls after retry, got %d", calls)
+	}
+}
+
+func TestUpdateTUIModelUnsupportedViewDoesNotShowSuccess(t *testing.T) {
+	m := NewUpdateTUIModel("/global")
+	m.inspectFn = func() config.TUIInstallInfo {
+		return config.TUIInstallInfo{Method: config.TUIInstallMethodUnknown}
+	}
+	m.updateFn = func() config.TUIUpdateResult {
+		t.Fatal("unsupported install must not run update")
+		return config.TUIUpdateResult{}
+	}
+	m.width = 80
+	m.height = 24
+
+	// Drive to stateTUIDone via unsupported path.
+	msg := runCmd(m.Init())
+	m, _ = m.Update(msg)
+
+	if !m.unsupported {
+		t.Fatal("expected m.unsupported = true")
+	}
+
+	output := m.View()
+
+	// The view must NOT claim the TUI was updated successfully.
+	if strings.Contains(output, "updated successfully") {
+		t.Fatalf("unsupported path View() must not show success message, got:\n%s", output)
+	}
+
+	// The view SHOULD contain an unsupported / cannot self-update message.
+	if !strings.Contains(output, "Cannot self-update") {
+		t.Fatalf("unsupported path View() should explain the install method is unsupported, got:\n%s", output)
 	}
 }

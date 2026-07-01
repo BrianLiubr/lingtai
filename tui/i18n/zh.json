@@ -419,6 +419,7 @@
   "update_tui.updating": "正在更新 TUI...",
   "update_tui.done": "TUI 更新成功。请重启 lingtai-tui。",
   "update_tui.failed": "TUI 更新失败——请查看上方信息。按 [r] 重试。",
+  "update_tui.unsupported": "无法自动更新：安装方式为 %s。请手动更新。",
   "doctor.title": "诊断",
   "doctor.scroll": "滚动",
   "doctor.section_runtime": "运行时与资源",
